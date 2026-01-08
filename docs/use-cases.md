@@ -578,6 +578,35 @@ cambium convert frames/*.png video.mp4 --fps 60      # frames → video
 - Timing/fps metadata
 - Frame ordering (filename sort? explicit?)
 
+### UC-95: Batch import heterogeneous assets (game engine)
+
+**Scenario:** Import a directory of mixed assets for a game engine, generating manifests.
+
+```bash
+cambium import assets/ --target godot --output imported/
+# Input: assets/
+#   ├── player.png
+#   ├── enemy.blend
+#   ├── music.wav
+#   └── config.json
+#
+# Output: imported/
+#   ├── player.webp
+#   ├── player.webp.import    # godot manifest
+#   ├── enemy.glb
+#   ├── enemy.glb.import
+#   ├── music.ogg
+#   ├── music.ogg.import
+#   └── config.tres           # godot resource
+```
+
+**Complexity:**
+- Heterogeneous input types - each file needs different conversion
+- Target-specific output formats (godot wants webp, ogg, glb)
+- Manifest generation per asset (.import files)
+- Preserves directory structure
+- May need target-specific metadata (import hints, flags)
+
 ### UC-94: Spritesheet ↔ individual sprites
 
 **Scenario:** Pack sprites into sheet, or extract from sheet.

@@ -2,7 +2,7 @@
 
 Record of key technical choices for Cambium.
 
-## 001: Plugin Format - C ABI Dynamic Libraries
+## ADR-0001: Plugin Format - C ABI Dynamic Libraries
 
 **Status:** Accepted
 
@@ -142,7 +142,7 @@ fn load_plugin(path: &Path) -> Result<Plugin> {
 
 ---
 
-## 002: Library-First Design
+## ADR-0002: Library-First Design
 
 **Status:** Accepted
 
@@ -334,4 +334,161 @@ crates/
   cambium/           # library (pub API)
   cambium-cli/       # binary (thin wrapper)
   cambium-plugin/    # plugin authoring helpers
+```
+
+---
+
+## ADR-0003: Property Bags as Type System
+
+**Status:** Accepted
+
+**Context:**
+
+Cambium needs a way to represent "what kind of data is this" for routing conversions. Options considered:
+
+| Model | Example | Expressiveness |
+|-------|---------|----------------|
+| Flat strings | `"png"`, `"mp4"` | Low - can't express params |
+| Hierarchical | `image/png` | Medium - grouping only |
+| Type + params | `video[pixfmt=yuv411]` | High - but type is privileged |
+| Property bags | `{format: png, width: 1024}` | Highest - uniform |
+| Bags + schema | Same + validation | Highest + structure |
+
+**Decision:** Pure property bags. Schemas are optional (plugin).
+
+**Rationale:**
+
+1. **Maximum generality** - Format is just another property, not privileged
+2. **Uniform model** - Format change, resize, and transcode are all "property transformations"
+3. **Domain-agnostic core** - Core knows nothing about images, video, etc.
+4. **Schemas as optional layer** - Validation can be a plugin for those who want it
+
+**Core data model:**
+
+```rust
+/// Properties describe data - core doesn't interpret these
+pub type Properties = HashMap<String, Value>;
+
+/// Values are JSON-like
+pub enum Value {
+    Null,
+    Bool(bool),
+    Int(i64),
+    Float(f64),
+    String(String),
+    Array(Vec<Value>),
+    Object(HashMap<String, Value>),
+}
+
+/// Converter declares what properties it requires and produces
+pub struct ConverterDecl {
+    /// Pattern that input properties must match
+    pub requires: PropertyPattern,
+
+    /// Properties this converter changes/adds
+    pub produces: PropertyPattern,
+
+    /// Properties explicitly removed (rare)
+    pub removes: Vec<String>,
+
+    // Everything else is preserved
+}
+
+/// Pattern for matching properties
+pub enum PropertyPattern {
+    /// Exact value: {format: "png"}
+    Exact(HashMap<String, Value>),
+
+    /// Predicate: {width: Gt(2048)}
+    Predicate(HashMap<String, Predicate>),
+
+    /// Any value present: {format: Any}
+    Exists(Vec<String>),
+}
+```
+
+**Search algorithm:** State-space planning
+
+```rust
+/// Find sequence of converters from current to goal properties
+pub fn plan(
+    current: &Properties,
+    goal: &Properties,
+    converters: &[ConverterDecl],
+) -> Option<Vec<ConverterId>> {
+    // A* search where:
+    // - State = current properties
+    // - Actions = applicable converters
+    // - Goal test = current ⊇ goal (superset match)
+    // - Heuristic = |properties differing from goal|
+}
+```
+
+**Superset matching:** Goal `{format: webp, width: 1024}` is satisfied by
+`{format: webp, width: 1024, colorspace: srgb}` - extra properties are fine.
+
+**Conventions (not enforced, for interop):**
+
+```
+image.*     - image properties (format, width, height, colorspace, ...)
+video.*     - video properties (container, codec, pixfmt, framerate, ...)
+audio.*     - audio properties (format, samplerate, channels, bitrate, ...)
+document.*  - document properties (format, pages, ...)
+archive.*   - archive properties (format, compression, ...)
+
+Or flat: format, width, height, ... (simpler, but collision risk)
+```
+
+**Schemas as plugin:**
+
+```rust
+// Optional: cambium-schemas plugin
+pub struct Schema {
+    pub domain: String,
+    pub properties: Vec<PropertyDef>,
+}
+
+pub struct PropertyDef {
+    pub name: String,
+    pub typ: PropertyType,  // Int { min, max }, Enum { choices }, etc.
+    pub required: bool,
+}
+
+// Plugin validates properties against schemas
+impl Plugin for SchemaValidator {
+    fn validate(&self, props: &Properties) -> Result<(), SchemaError>;
+}
+```
+
+Multiple plugins can extend schemas. On conflict (incompatible constraints), error at plugin load time.
+
+**Consequences:**
+
+- (+) Core is maximally general and domain-agnostic
+- (+) Same model handles format change, resize, transcode, etc.
+- (+) Plugins can add any properties without core changes
+- (+) Schemas are opt-in, not required
+- (-) No built-in validation without schema plugin
+- (-) Conventions need documentation and discipline
+- (-) Search space potentially large (mitigated by heuristics)
+
+**Examples:**
+
+```rust
+// PNG to WebP
+requires: {format: Exact("png")}
+produces: {format: "webp"}
+
+// Resize (any image)
+requires: {width: Exists, height: Exists}
+produces: {width: <from_options>, height: <from_options>}
+
+// yuv411 to yuv420p (specific pixel format)
+requires: {pixfmt: Exact("yuv411")}
+produces: {pixfmt: "yuv420p"}
+
+// PDF to PNG (cross-domain)
+requires: {format: Exact("pdf")}
+produces: {format: "png", width: <from_options>, height: <from_options>}
+removes: [pages, ...]  // PDF-specific props don't apply to image
 ```
