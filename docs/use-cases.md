@@ -411,14 +411,261 @@ cambium convert input.md output.pdf --via latex
 
 ---
 
+## Extended Chains (Unconventional)
+
+### UC-80: Manufacturing - CAD to GCODE
+
+**Scenario:** 3D model to printable instructions.
+
+```bash
+cambium convert model.step model.gcode --printer ender3
+# Internally: STEP → STL → sliced GCODE
+```
+
+**Complexity:** Multi-hop through different domains (CAD → mesh → toolpath).
+External config needed (printer profile).
+
+### UC-81: PCB pipeline
+
+**Scenario:** PCB design to fabrication files.
+
+```bash
+cambium convert board.kicad_pcb --to gerber-zip
+# Outputs: multiple gerber layers + drill files + preview PNG
+```
+
+**Complexity:** One input → multiple outputs. Domain-specific toolchain.
+
+### UC-82: Font pipeline
+
+**Scenario:** Source font to web-ready formats.
+
+```bash
+cambium convert font.glyphs font.woff2
+# Internally: Glyphs → UFO → OTF → WOFF2
+```
+
+**Complexity:** Domain-specific chain. May need subsetting, hinting.
+
+### UC-83: Icon font generation
+
+**Scenario:** SVG icons → icon font.
+
+```bash
+cambium convert icons/*.svg icons.woff2 --as icon-font
+```
+
+**Complexity:** Multiple inputs → single output. Semantic: these SVGs are glyphs.
+
+### UC-84: E-book chain
+
+**Scenario:** Markdown to Kindle format.
+
+```bash
+cambium convert book.md book.azw3
+# Internally: Markdown → EPUB → MOBI → AZW3
+```
+
+**Complexity:** Long chain through intermediate formats.
+
+### UC-85: Diagram rendering (text → image)
+
+**Scenario:** Text DSL to image.
+
+```bash
+cambium convert diagram.mmd diagram.png   # mermaid
+cambium convert graph.dot graph.svg        # graphviz
+cambium convert sequence.puml sequence.png # plantuml
+```
+
+**Complexity:** "Format" is text, but semantic interpretation produces graphics.
+Converters need domain interpreters (mermaid-js, graphviz, plantuml).
+
+### UC-86: Data visualization
+
+**Scenario:** Data → chart → image.
+
+```bash
+cambium convert data.csv chart.png --spec vega-lite.json
+# Or: inlined
+cambium convert data.csv chart.png --chart bar --x date --y value
+```
+
+**Complexity:** Conversion requires specification/template. Data + spec → output.
+
+### UC-87: Localization export
+
+**Scenario:** Translation spreadsheet → multiple platform formats.
+
+```bash
+cambium convert translations.xlsx locales/ --formats android,ios,json
+# Outputs: locales/en.xml, locales/en.strings, locales/en.json, ...
+```
+
+**Complexity:** One input → multiple outputs × multiple formats. Tree output.
+
+### UC-88: Compilation as conversion
+
+**Scenario:** Source code → compiled output.
+
+```bash
+cambium convert main.ts main.js          # typescript
+cambium convert paper.tex paper.pdf       # latex
+cambium convert notebook.ipynb report.html --execute  # jupyter
+```
+
+**Complexity:** Is this conversion or build? Requires toolchain (tsc, pdflatex, jupyter).
+Execution may have side effects, network access, nondeterminism.
+
+### UC-89: MIDI to audio
+
+**Scenario:** MIDI → WAV requires external resource.
+
+```bash
+cambium convert song.midi song.wav --soundfont piano.sf2
+```
+
+**Complexity:** Conversion requires auxiliary input (soundfont).
+Not just file → file, but file + resource → file.
+
+### UC-90: QR/Barcode generation
+
+**Scenario:** Data → visual encoding.
+
+```bash
+cambium convert --from text "https://example.com" qr.png
+cambium convert --from isbn "978-3-16-148410-0" barcode.svg
+```
+
+**Complexity:** Input is data/string, not file. Type is semantic (URL, ISBN), not format.
+
+### UC-91: Asymmetric bidirectional
+
+**Scenario:** Round-trip with quality loss.
+
+```bash
+cambium convert doc.pdf doc.docx   # best-effort extraction
+cambium convert doc.docx doc.pdf   # faithful rendering
+```
+
+**Complexity:** Same types, but converters have different fidelity.
+Graph edges have quality/lossiness weights.
+
+### UC-92: Spreadsheet as database
+
+**Scenario:** Excel → SQLite.
+
+```bash
+cambium convert data.xlsx data.sqlite
+cambium convert data.sqlite data.xlsx
+```
+
+**Complexity:** Cross-domain (document ↔ database). Schema inference.
+
+### UC-93: Video/GIF ↔ frames
+
+**Scenario:** Explode video/gif to frames, or assemble frames to video/gif.
+
+```bash
+cambium convert animation.gif frames/      # gif → directory of PNGs
+cambium convert video.mp4 frames/ --fps 30 # video → frames at specific rate
+cambium convert frames/*.png animation.gif --fps 15  # frames → gif
+cambium convert frames/*.png video.mp4 --fps 60      # frames → video
+```
+
+**Complexity:**
+- 1 → N (explode) and N → 1 (assemble)
+- Timing/fps metadata
+- Frame ordering (filename sort? explicit?)
+
+### UC-94: Spritesheet ↔ individual sprites
+
+**Scenario:** Pack sprites into sheet, or extract from sheet.
+
+```bash
+cambium convert sprites/*.png spritesheet.png --pack --metadata sprites.json
+cambium convert spritesheet.png sprites/ --unpack --metadata sprites.json
+```
+
+**Complexity:**
+- N → 1 with layout algorithm (packing)
+- Metadata sidecar (positions, names)
+- Round-trip depends on metadata preservation
+
+---
+
 ## Observations
 
-*To be filled in after reviewing use cases.*
+Patterns emerging from use cases:
 
-Questions each use case raises:
-- Is this a type distinction or a converter option?
-- Does routing need to know this, or just the converter?
-- Can the system inspect input to determine parameters?
+### Pattern: Routing complexity
 
-Patterns emerging:
-- ???
+| Pattern | Example | Core needs |
+|---------|---------|------------|
+| Direct | json → yaml | Lookup |
+| Multi-hop | markdown → pdf | Graph search |
+| Conditional | only if width > 2048 | Predicate matching |
+| Parameterized | yuv411 → yuv420p | Property-aware routing |
+
+### Pattern: Input/Output cardinality
+
+| Pattern | Example | Notes |
+|---------|---------|-------|
+| 1 → 1 | png → webp | Standard |
+| 1 → N | kicad → gerber layers | Multi-output |
+| N → 1 | svgs → icon font | Aggregation |
+| N → N | tree conversion | Recursive |
+
+### Pattern: External dependencies
+
+| Pattern | Example | Notes |
+|---------|---------|-------|
+| Self-contained | json → yaml | Just data |
+| Toolchain | latex → pdf | Needs pdflatex |
+| Resource | midi → wav | Needs soundfont |
+| Spec/template | csv → chart | Needs chart spec |
+
+### Pattern: Conversion vs computation
+
+| Pattern | Example | Notes |
+|---------|---------|-------|
+| Pure transform | png → jpg | Deterministic |
+| Compilation | ts → js | Requires compiler |
+| Execution | notebook → html | Runs code, side effects |
+| Generation | text → qr code | Creates from data |
+
+### Pattern: Fidelity
+
+| Pattern | Example | Notes |
+|---------|---------|-------|
+| Lossless | png → png (resize) | Recoverable |
+| Lossy | png → jpg | Information lost |
+| Asymmetric | pdf ↔ docx | One direction faithful, other best-effort |
+
+### Open questions surfaced
+
+1. ~~**Is compilation in scope?**~~ **Yes.** TypeScript → JS, LaTeX → PDF, Sass → CSS are all in scope.
+   - These require toolchains with their own dependencies
+   - Goal: minimize mental overhead, unify interface regardless of whether it's "conversion" or "compilation"
+
+2. **Multi-input conversions?** MIDI + soundfont → WAV, data + template → chart
+   - Current model assumes single input
+   - How to express auxiliary inputs?
+
+3. **Multi-output conversions?** KiCad → gerber layers, i18n → locale files, video → frames
+   - Single file → directory of files
+   - How to express output structure?
+
+4. **Is generation "conversion"?** Text → QR code, data → chart
+   - Input isn't a "file format"
+   - Type is semantic (URL, ISBN) not structural
+
+5. **How to express fidelity?** PDF → DOCX is lossy, DOCX → PDF is not
+   - Directed graph with edge weights?
+   - User preference: `--prefer lossless`?
+
+6. **Where's the line with bundling?**
+   - Spritesheet packing: conversion? bundling?
+   - Archive creation: conversion? bundling?
+   - Webpack/esbuild territory: definitely out of scope?
+   - Need clearer boundary
