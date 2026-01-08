@@ -13,59 +13,34 @@ Options:
 2. **Weighted edges** - converters declare cost (speed? quality loss?)
 3. **User hint** - `--prefer lossless` or `--prefer fast`
 
-### Are types flat or hierarchical?
+### Type system
 
-Flat: `png`, `jpg`, `webp` are all distinct
-Hierarchical: `image/png`, `image/jpg` share parent `image`
+*Decided: Property bags. See ADR-0003.*
 
-Hierarchy enables:
-- Wildcards: "convert all images to webp"
-- Fallback converters: "anything → image/png"
+### Property naming conventions
 
-But adds complexity.
+**Decision:** Flat by default, namespace only when semantics differ.
 
-### How to handle parameterized types?
+- `width` = width everywhere (image, video, PDF page) - same concept
+- `height`, `format`, `path` - same concept across domains
 
-`video/mp4` at 1080p vs 4K - same type or different?
-`yuv411` vs `yuv420p` - same "video" type with different pixel format?
+Possibly need namespacing:
+- `compression` - image lossy compression ≠ archive compression?
+- `quality` - same 0-100 scale across domains? Or different meanings?
 
-This quickly becomes expressive:
-```
-video[pixfmt=yuv411] → video[pixfmt=yuv420p]
-image[width>4096] → image[width<=4096]
-audio[samplerate=48000] → audio[samplerate=44100]
-```
+**TODO:** Enumerate properties that need namespacing vs those that don't.
 
-Options spectrum:
+### Content inspection
 
-1. **Flat types, parameters as options** (simplest)
-   - Types: `mp4`, `mkv`, `png`
-   - Parameters passed to converter: `convert(&input, json!({"pixfmt": "yuv420p"}))`
-   - Graph is simple, converter handles params
-   - Con: can't express "only convert yuv411 sources"
+How do we populate initial properties from a file?
 
-2. **Type + variant** (middle ground)
-   - Types: `video/mp4`, `video/mp4:yuv420p`
-   - Explicit variants for common cases
-   - Con: combinatorial explosion (resolution × pixfmt × codec × ...)
+- Plugins provide inspection: PNG plugin knows how to read PNG metadata
+- Returns `Properties` from file bytes
 
-3. **Type + constraints** (most expressive)
-   - Types: `video[container=mp4, pixfmt=yuv411, width=1920]`
-   - Converters declare: `from: video[pixfmt=yuv411], to: video[pixfmt=yuv420p]`
-   - Graph traversal becomes constraint matching
-   - Con: complexity, need constraint solver
-
-4. **Type + traits** (capability-based)
-   - Types have capabilities: `{id: "mp4", traits: ["video", "seekable", "lossy"]}`
-   - Converters require/provide traits
-   - More about "what can I do with this" than exact format
-   - Con: doesn't handle numeric constraints (resolution, bitrate)
-
-**Needs further design work.** Questions to resolve:
-- What parameters actually matter for routing vs. just converter options?
-- Is constraint solving worth the complexity?
-- Can we start simple (option 1) and evolve, or does that paint us into a corner?
-- What does prior art do? (ffmpeg filters, imagemagick delegates, nix derivations)
+Open:
+- Unknown formats: fail? Return minimal `{path: "...", size: N}`?
+- Streaming inspection for large files?
+- Multiple inspectors match same file?
 
 ## Plugin System
 
@@ -143,3 +118,174 @@ Options:
 1. **Cambium is format-only** - knows `png`, `obj`, not `Image`, `Mesh`
 2. **Shared IR crate** - `rhizome-types` used by both
 3. **Cambium defines IRs** - Resin depends on cambium's `Image` type
+
+## Multi-Input / Multi-Output (N→M Conversions)
+
+This is a significant design area that needs careful thought.
+
+### Examples
+
+| Pattern | Example |
+|---------|---------|
+| N→1 | frames → video, SVGs → icon font, files → manifest |
+| 1→N | video → frames, archive → files |
+| N→M | batch tree conversion |
+
+### How does this fit property bags?
+
+For 1→1, we have:
+```
+{format: png, width: 1024} → {format: webp, width: 1024}
+```
+
+For N→1, options:
+```
+# Option A: Array of property bags as input
+[{format: png, path: "01.png"}, {format: png, path: "02.png"}, ...] → {format: gif}
+
+# Option B: "Collection" type
+{type: collection, items: [...], ...} → {format: gif}
+
+# Option C: Directory as type
+{type: directory, path: "frames/", ...} → {format: gif}
+```
+
+### How do converters declare multi-input?
+
+```rust
+// Current: single input
+requires: {format: Exact("png")}
+
+// Multi-input options:
+requires: Array({format: Exact("png")})  // array of matching items
+requires: {type: "collection", item_format: "png"}  // special collection type
+```
+
+### How does search/planning work?
+
+For 1→1: state-space search, straightforward.
+
+For N→1: when does the "aggregation" step happen?
+- After all 1→1 conversions complete?
+- Need to track "batch" context?
+
+For 1→N: produces multiple outputs, each needs properties.
+- Does the converter declare output patterns?
+- How does downstream routing work?
+
+## Manifest Generation (Specific Case of N→1)
+
+### Requirements
+
+1. Needs metadata from ALL converted files (not file contents)
+2. Must run AFTER individual conversions complete
+3. Must NOT include other manifests (avoid recursion)
+4. Target-specific (Godot, Unity, custom)
+
+### Options Explored
+
+**Option A: PostProcessor trait (special-cased)**
+```rust
+trait ManifestGenerator {
+    fn includes(&self, props: &Properties) -> bool;
+    fn generate(&self, files: &[FileInfo]) -> Result<Vec<u8>>;
+}
+```
+- Con: breaks uniformity, special type of operation
+
+**Option B: N→1 converter (uniform)**
+```rust
+// Manifest generator is just a converter
+requires: [{type: file, is_manifest: false}, ...]  // array input
+produces: {format: "godot-import-manifest"}
+```
+- Pro: fits existing model
+- Con: how to express "all files from this batch"?
+
+**Option C: Directory as input type**
+```rust
+requires: {type: directory, path: "..."}
+produces: {format: "godot-import-manifest"}
+```
+- Pro: uniform, directory is just another type with contents
+- Con: contents property could be huge
+
+**Option D: Pipeline phases / hooks**
+- Pipeline has stages: inspect → convert → aggregate → finalize
+- N→1 converters automatically run in aggregate phase
+- Pro: clear ordering without explicit orchestration
+- Con: implicit staging rules
+- Con: overoptimizing for one case - may not generalize
+
+### The "all files from this batch" problem
+
+How does a manifest generator know which files to include?
+
+```bash
+cambium import assets/ --target godot
+```
+
+The manifest generator needs to receive:
+- All files that were just converted
+- Their output paths and properties
+- But NOT other manifests or unrelated files
+
+Options:
+1. **Implicit batching** - CLI tracks batch, passes to aggregators
+2. **Explicit glob** - `requires: {glob: "**/*.{webp,glb,ogg}"}`
+3. **Tag/label** - conversions tag outputs, aggregator filters by tag
+4. **Scope** - `{scope: "current-batch"}` magic property
+
+### Leaning toward
+
+Probably (B) with (1): N→1 converters are uniform, but CLI provides batching context.
+
+The converter declares it needs an array of file metadata. The CLI/runtime is responsible for collecting the batch and passing it.
+
+```rust
+struct ConverterDecl {
+    input_cardinality: Cardinality,  // One, Many, OneOrMore
+    output_cardinality: Cardinality,
+    requires: PropertyPattern,
+    produces: PropertyPattern,
+}
+```
+
+**Needs more design work** - this affects core model significantly.
+
+### Design principles emerging
+
+1. **No special-casing** - sidecars, manifests, etc. are just N→M conversions
+2. **Cardinality is declared** - converters say 1→1, 1→N, N→1, N→M
+3. **Orchestration collects inputs** - CLI/runtime groups files, passes to converters
+4. **User-defined manifests** - manifest format is just another converter output
+
+```bash
+# User wants: import files + generate custom JSON manifest
+cambium import assets/ --manifest manifest.json
+
+# This runs:
+# 1. Individual conversions (1→1 or 1→N each)
+# 2. Manifest converter (N→1): [{path, format, ...}, ...] → JSON array
+```
+
+### Multi-output and "canonical"
+
+For 1→N, maybe one output is "canonical" (main file) for downstream routing:
+
+```rust
+produces: [
+    {format: "webp", canonical: true},   // main output
+    {format: "json", metadata: true},     // auxiliary
+]
+```
+
+Or: no distinction, all outputs are equal. User specifies which to use downstream.
+
+**TODO:** Decide if `canonical` flag is needed or if flat list suffices.
+
+### Research needed
+
+- Walk through complete import flow for 2-3 targets (Godot, Unity, custom)
+- Identify patterns: what's 1→1, 1→N, N→1, N→M
+- Verify framework handles all cases without special-casing
