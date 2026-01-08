@@ -190,38 +190,88 @@ impl Registry {
     pub fn find_path(&self, from: &str, to: &str) -> Option<Vec<ConverterInfo>>;
 }
 
-/// Perform conversion
-pub fn convert(
-    registry: &Registry,
-    from: &str,
-    to: &str,
-    input: &[u8],
-    options: Option<&str>,  // JSON options
-) -> Result<Vec<u8>>;
+/// Plan a conversion (phase 1)
+pub struct Plan {
+    path: Vec<ConverterInfo>,
+    required_options: Vec<OptionSpec>,
+    optional_options: Vec<OptionSpec>,
+    missing_tools: Vec<String>,
+}
 
-/// Streaming conversion for large files
-pub fn convert_stream(
-    registry: &Registry,
-    from: &str,
-    to: &str,
-    input: impl Read,
-    output: impl Write,
-    options: Option<&str>,
-) -> Result<()>;
+impl Registry {
+    /// Plan a conversion without executing
+    pub fn plan(&self, from: &str, to: &str) -> Result<Plan>;
+
+    /// Execute a planned conversion (phase 2)
+    pub fn execute(&self, plan: &Plan, input: &[u8], options: &Options) -> Result<Vec<u8>>;
+
+    /// Convenience: plan + execute with defaults
+    pub fn convert(&self, from: &str, to: &str, input: &[u8], options: &Options) -> Result<Vec<u8>>;
+}
+
+/// Option specification surfaced to caller
+pub struct OptionSpec {
+    name: String,           // e.g. "compression_level"
+    description: String,    // human-readable
+    typ: OptionType,        // Int { min, max }, Bool, Enum { choices }, etc.
+    default: Option<Value>, // sensible default if any
+}
 
 /// Converter trait for built-in converters
 pub trait Converter: Send + Sync {
     fn info(&self) -> ConverterInfo;
-    fn convert(&self, input: &[u8], options: Option<&str>) -> Result<Vec<u8>>;
+
+    /// Declare options this converter accepts
+    fn options(&self) -> Vec<OptionSpec>;
+
+    fn convert(&self, input: &[u8], options: &Options) -> Result<Vec<u8>>;
 }
 ```
+
+**Presets (declarative defaults):**
+
+Instead of hardcoded defaults, presets are declarative option bundles:
+
+```toml
+# presets.toml (shipped with cambium or user-defined)
+
+[presets.lossless]
+description = "Preserve quality, larger files"
+quality = 100
+compression = "lossless"
+
+[presets.balanced]
+description = "Good quality, reasonable size (default)"
+quality = 80
+compression = "lossy"
+
+[presets.crush]
+description = "Minimize size, acceptable quality loss"
+quality = 60
+compression = "lossy"
+strip_metadata = true
+```
+
+Usage:
+```bash
+cambium convert image.png image.webp --preset crush
+cambium convert video.mp4 video.webp --preset lossless
+
+# Preset + overrides
+cambium convert image.png image.webp --preset balanced --quality 90
+```
+
+Presets map normalized options to converter-specific flags:
+- `quality=80` → `-q 80` (cwebp), `-crf 23` (ffmpeg), `--draco.compressionLevel 7` (gltf-pipeline)
+
+Converters declare how they interpret normalized options; presets just set those options.
 
 **CLI as wrapper:**
 
 ```rust
 // cambium-cli/src/main.rs
 
-use cambium::Registry;
+use cambium::{Registry, Options};
 use clap::Parser;
 
 fn main() -> anyhow::Result<()> {
@@ -229,23 +279,38 @@ fn main() -> anyhow::Result<()> {
     let registry = Registry::with_default_plugins()?;
 
     match args.command {
-        Command::Convert { input, output, from, to } => {
+        Command::Plan { input, to } => {
+            let from = detect_type(&input)?;
+            let plan = registry.plan(&from, &to)?;
+
+            println!("Path: {}", plan.path_display());
+            println!("\nRequired options:");
+            for opt in plan.required_options() {
+                println!("  --{}: {} ({})", opt.name, opt.typ, opt.description);
+            }
+            println!("\nOptional:");
+            for opt in plan.optional_options() {
+                let default = opt.default.map(|d| format!(" [default: {}]", d)).unwrap_or_default();
+                println!("  --{}: {}{}", opt.name, opt.typ, default);
+            }
+            if !plan.missing_tools().is_empty() {
+                println!("\n⚠ Missing tools: {:?}", plan.missing_tools());
+            }
+        }
+        Command::Convert { input, output, from, to, preset, options } => {
             let from = from.or_else(|| detect_type(&input));
             let to = to.or_else(|| detect_type(&output));
 
+            let mut opts = Options::from_preset(preset.as_deref().unwrap_or("balanced"))?;
+            opts.merge(&options);  // CLI flags override preset
+
             let data = std::fs::read(&input)?;
-            let result = cambium::convert(&registry, &from, &to, &data, None)?;
+            let result = registry.convert(&from, &to, &data, &opts)?;
             std::fs::write(&output, result)?;
         }
         Command::List => {
             for c in registry.converters() {
                 println!("{} -> {}", c.from_type, c.to_type);
-            }
-        }
-        Command::Path { from, to } => {
-            match registry.find_path(&from, &to) {
-                Some(path) => println!("{}", path.iter().map(|c| &c.id).join(" -> ")),
-                None => eprintln!("No conversion path found"),
             }
         }
     }

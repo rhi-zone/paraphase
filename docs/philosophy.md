@@ -8,6 +8,67 @@ Core design principles for Cambium.
 
 **Core job:** Unification. One vocabulary, one interface, many backends.
 
+## The Agent Knowledge Gap
+
+The deeper motivation: **agents suck at toolchains.**
+
+When an AI agent (like moss) needs to convert data, it faces:
+- "Do I run blender? gltf-pipeline? meshoptimizer?"
+- "What flags? Is it installed? Which version?"
+- Hallucinated flags, wrong CLI versions, failed optimizations
+
+**Cambium solves this by being a route planner, not a task runner.**
+
+```
+# Task runner (make/just): agent must know the recipe
+blender --background --python export.py -- input.blend output.glb
+gltf-pipeline -i output.glb -o optimized.glb --draco.compressionLevel 7
+
+# Cambium: agent only knows source and destination types
+cambium convert model.blend optimized.glb --optimize
+```
+
+The agent says "I have X, I need Y" - cambium finds the path through the graph.
+
+**Why not existing tools?**
+
+| Tool | Approach | Gap |
+|------|----------|-----|
+| Make | File-based, mtime-driven | You write the recipes |
+| Just | Task runner | You write the recipes manually |
+| Nix | Content-addressed, reproducible | Heavyweight, config-heavy |
+| Cambium | Type-driven route planning | Agent just declares intent |
+
+**Scope test:** If the transformation is "agent shouldn't need to know the toolchain," it's in scope. If it requires business logic or architectural decisions, it's out.
+
+## Plan → Execute (Agent-Friendly Interface)
+
+Conversions are two-phase:
+
+**Phase 1: Plan** - Cambium finds the path and surfaces required decisions.
+```
+cambium plan model.blend --to optimized.glb
+
+Path: blend → glb → optimized-glb (2 steps)
+Required options:
+  - compression_level: 1-10 (default: 7)
+Optional:
+  - draco: bool (default: true)
+  - texture_format: webp | ktx2 | original
+Tools: blender ✓, gltf-pipeline ✓
+```
+
+**Phase 2: Execute** - Agent provides options, cambium runs the path.
+```
+cambium convert model.blend optimized.glb --compression-level 9
+```
+
+This enables:
+- **Informed decisions**: Agent sees normalized options, not raw flags
+- **Early failure**: "No path exists" or "blender not installed" before execution
+- **Path selection**: Multiple paths available, agent picks based on tradeoffs
+- **Dry run**: `--dry-run` shows plan without executing
+
 ```bash
 # Without cambium: learn each tool's flags
 ffmpeg -i video.mp4 -crf 23 video.webm
