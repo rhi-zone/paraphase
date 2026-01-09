@@ -2,6 +2,19 @@
 
 Unresolved design decisions for Cambium.
 
+## Resolved
+
+*These are documented elsewhere but listed here for reference.*
+
+- **Type system**: Property bags (ADR-0003)
+- **Plugin format**: C ABI dynamic libraries (ADR-0001)
+- **Library vs CLI**: Library-first (ADR-0002)
+- **Plan vs Suggest**: Just `plan` - incomplete input = suggestion
+- **Pattern extraction**: Plugin using regex, not custom DSL
+- **Sidecars/manifests**: Just N→M conversions, no special case
+- **Workflow format**: Format-agnostic (YAML, TOML, JSON, etc.)
+- **Property naming**: Flat by default, namespace when semantics differ
+
 ## Core Model
 
 ### How do converters specify cost/quality?
@@ -13,22 +26,19 @@ Options:
 2. **Weighted edges** - converters declare cost (speed? quality loss?)
 3. **User hint** - `--prefer lossless` or `--prefer fast`
 
-### Type system
-
-*Decided: Property bags. See ADR-0003.*
-
-### Property naming conventions
+### Property naming: what needs namespacing?
 
 **Decision:** Flat by default, namespace only when semantics differ.
 
-- `width` = width everywhere (image, video, PDF page) - same concept
-- `height`, `format`, `path` - same concept across domains
+Universal (no namespace):
+- `width`, `height`, `format`, `path`, `size`
+- `quality` (0-100 scale, same meaning everywhere?)
 
-Possibly need namespacing:
+Possibly namespaced:
 - `compression` - image lossy compression ≠ archive compression?
-- `quality` - same 0-100 scale across domains? Or different meanings?
+- `channels` - audio channels ≠ image channels?
 
-**TODO:** Enumerate properties that need namespacing vs those that don't.
+**TODO:** Enumerate and decide.
 
 ### Content inspection
 
@@ -40,7 +50,7 @@ How do we populate initial properties from a file?
 Open:
 - Unknown formats: fail? Return minimal `{path: "...", size: N}`?
 - Streaming inspection for large files?
-- Multiple inspectors match same file?
+- Multiple inspectors match same file? First match? Merge?
 
 ## Plugin System
 

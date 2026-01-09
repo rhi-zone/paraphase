@@ -19,12 +19,12 @@ When an AI agent (like moss) needs to convert data, it faces:
 
 **Cambium solves this by being a route planner, not a task runner.**
 
-```
+```bash
 # Task runner (make/just): agent must know the recipe
 blender --background --python export.py -- input.blend output.glb
 gltf-pipeline -i output.glb -o optimized.glb --draco.compressionLevel 7
 
-# Cambium: agent only knows source and destination types
+# Cambium: agent only knows source and destination
 cambium convert model.blend optimized.glb --optimize
 ```
 
@@ -45,179 +45,204 @@ The agent says "I have X, I need Y" - cambium finds the path through the graph.
 
 Conversions are two-phase:
 
-**Phase 1: Plan** - Cambium finds the path and surfaces required decisions.
-```
-cambium plan model.blend --to optimized.glb
-
-Path: blend → glb → optimized-glb (2 steps)
-Required options:
-  - compression_level: 1-10 (default: 7)
-Optional:
-  - draco: bool (default: true)
-  - texture_format: webp | ktx2 | original
-Tools: blender ✓, gltf-pipeline ✓
-```
-
-**Phase 2: Execute** - Agent provides options, cambium runs the path.
-```
-cambium convert model.blend optimized.glb --compression-level 9
-```
-
-This enables:
-- **Informed decisions**: Agent sees normalized options, not raw flags
-- **Early failure**: "No path exists" or "blender not installed" before execution
-- **Path selection**: Multiple paths available, agent picks based on tradeoffs
-- **Dry run**: `--dry-run` shows plan without executing
+**Phase 1: Plan** - Find path, surface required decisions.
 
 ```bash
-# Without cambium: learn each tool's flags
-ffmpeg -i video.mp4 -crf 23 video.webm
-cwebp -q 80 image.png -o image.webp
-gltf-pipeline -i model.glb -o model.glb --draco.compressionLevel 7
+cambium plan --from sprites/*.png --to spritesheet.png
 
-# With cambium: one interface
-cambium convert video.mp4 video.webm --quality 80
-cambium convert image.png image.webp --quality 80
-cambium convert model.glb model.glb --compress draco
+# Output:
+# Suggested path: glob → regex-extract → spritesheet-pack
+# Required:
+#   regex-extract.pattern: string (regex with named groups)
+# Optional:
+#   spritesheet-pack.quality: 0-100 (default: 80)
+#   spritesheet-pack.padding: int (default: 2)
+# Presets: --preset lossless | balanced | crush
+# Tools: all available ✓
 ```
 
-Cambium normalizes options (`--quality` maps to `-crf`, `-q`, `--draco.compressionLevel` etc.) so users learn one vocabulary.
+**Phase 2: Execute** - Provide options, run the path.
 
-## Type-Driven, Not Command-Driven
-
-The fundamental insight: declare **what you have** and **what you want**, not **how to get there**.
-
-```
-# Task runner (make/just) - you specify the command
-ffmpeg -i video.mp4 -c:v libx264 video.mkv
-
-# Cambium - you specify the types
-cambium convert video.mp4 --to mkv
-# OR: inferred from extension
-cambium convert video.mp4 video.mkv
+```bash
+cambium convert sprites/*.png spritesheet.png \
+    --pattern "sprite_(?<id>\d+)_(?<frame>\d+)" \
+    --preset balanced
 ```
 
-The system maintains a graph of registered converters and finds the path.
+Incomplete plans = suggestions. No separate `suggest` command.
 
-## Converter Graph
+```bash
+# Incomplete: only source and sink
+cambium plan --from input.png --to output.webp
+# Cambium suggests pipeline + shows what options are available
 
-Formats are nodes. Converters are edges. Cambium finds shortest paths.
-
-```
-         ┌─────┐
-         │ PNG │
-         └──┬──┘
-            │
-┌─────┐  ┌──▼──┐  ┌─────┐
-│ SVG ├──► RGB ◄──┤ JPG │
-└─────┘  └──┬──┘  └─────┘
-            │
-         ┌──▼──┐
-         │ WebP│
-         └─────┘
+# Complete: shows exact execution plan
+cambium plan workflow.yaml
 ```
 
-If you have PNG and want WebP, Cambium finds: `PNG → RGB → WebP`
+## Normalized Options
 
-Converters can be:
-- Built-in (common formats)
-- Plugins (user-registered)
-- Shelling out (wrapping existing tools)
+Users learn ONE vocabulary. Cambium maps to tool-specific flags:
 
-## Types, Not Extensions
-
-File extensions are hints, not truth. Cambium uses content-aware type detection:
-
-```
-# These are equivalent:
-cambium convert data.json --to yaml
-cambium convert --from json data --to yaml
-
-# Type detection for ambiguous files:
-cambium convert config --to toml  # sniffs content to determine source type
+```bash
+# Same --quality flag everywhere
+cambium convert image.png image.webp --quality 80   # → cwebp -q 80
+cambium convert video.mp4 video.webm --quality 80   # → ffmpeg -crf 23
+cambium convert model.glb model.glb --quality 80    # → draco level 7
 ```
 
-Types form a hierarchy:
-```
-Data
-├── Structured
-│   ├── JSON
-│   ├── YAML
-│   └── TOML
-├── Document
-│   ├── Markdown
-│   ├── HTML
-│   └── PDF
-└── Media
-    ├── Image
-    │   ├── PNG
-    │   └── JPG
-    └── Audio
-        ├── WAV
-        └── MP3
-```
+Agent doesn't need to know that quality=80 means different flags for different tools.
 
-## Intermediate Representations
+## Presets
 
-Some conversions go through a canonical IR:
+Declarative option bundles for common scenarios:
 
-| Domain | IR | Why |
-|--------|-----|-----|
-| Config | In-memory tree (serde_value?) | Lossless between JSON/YAML/TOML |
-| Document | AST (markdown-like) | Semantic structure preserved |
-| Image | Raw pixels / GPU texture | Universal bitmap interchange |
-| Mesh | Half-edge or indexed | Topology-aware transforms |
+```toml
+# presets.toml
+[lossless]
+quality = 100
+compression = "lossless"
 
-Direct converters can bypass IR when lossless (e.g., JSON ↔ YAML).
+[balanced]
+quality = 80
+compression = "lossy"
 
-## Pipelines
-
-Chain transforms explicitly when needed:
-
-```
-cambium pipe input.md \
-  | markdown-to-html \
-  | minify-html \
-  | gzip \
-  > output.html.gz
+[crush]
+quality = 60
+strip_metadata = true
 ```
 
-Or declaratively:
+```bash
+cambium convert image.png image.webp --preset crush
+cambium convert image.png image.webp --preset balanced --quality 90  # override
+```
+
+## Property Bags, Not Types
+
+*See [ADR-0003](./architecture-decisions.md#adr-0003-property-bags-as-type-system)*
+
+Data is described by property bags, not hierarchical types:
+
+```
+{format: "png", width: 1024, height: 768, colorspace: "srgb"}
+```
+
+Conversion = property transformation. Format is just another property.
+
+```
+{format: "png", width: 4096} → {format: "webp", width: 1024}
+```
+
+Same model handles format change, resize, transcode, etc.
+
+**Property naming:** Flat by default, namespace only when semantics differ.
+- `width`, `height`, `format` - universal
+- `image.compression` vs `archive.compression` - different meanings
+
+## Workflows
+
+Workflows are serializable pipelines:
+
 ```yaml
-# cambium.yaml
-pipelines:
-  docs:
-    input: "docs/*.md"
-    steps:
-      - markdown-to-html
-      - minify-html
-    output: "dist/{name}.html"
+# workflow.yaml
+preset: balanced
+source:
+  glob: "sprites/*.png"
+steps:
+  - converter: regex-extract
+    options:
+      pattern: "sprite_(?<id>\\d+)_(?<frame>\\d+)"
+  - converter: spritesheet-pack
+    options:
+      quality: 90
+sink:
+  path: "output/sprites.png"
 ```
 
-## Incremental by Default
+Format-agnostic: YAML, TOML, JSON - cambium eats its own dogfood.
 
-Track file mtimes and content hashes. Only reconvert when inputs change.
-
-```
-cambium convert *.md --to html  # first run: converts all
-cambium convert *.md --to html  # second run: "nothing to do"
-# edit one file
-cambium convert *.md --to html  # third run: converts only changed file
+```bash
+cambium convert workflow.json workflow.yaml  # convert workflow files too
 ```
 
-## Ecosystem, Not Monolith
+Agents can build workflows programmatically:
+
+```rust
+Workflow::new()
+    .preset("balanced")
+    .source("sprites/*.png")
+    .pipe("regex-extract", [("pattern", r"sprite_(?<id>\d+)_(?<frame>\d+)")])
+    .pipe("spritesheet-pack", [("quality", 90)])
+    .sink("output/sprites.png")
+    .build()?
+```
+
+## N→M Cardinality
+
+Not all conversions are 1→1:
+
+| Pattern | Example |
+|---------|---------|
+| 1→1 | png → webp |
+| 1→N | video → frames |
+| N→1 | frames → video, files → manifest |
+| N→M | batch tree conversion |
+
+Converters declare their cardinality. Orchestration handles batching.
+
+No special cases: sidecars, manifests, spritesheets are all just N→M conversions.
+
+## Pattern Extraction (Plugin)
+
+Structured filename parsing is a plugin, not core. Uses regex:
+
+```bash
+cambium convert "sprites/*.png" spritesheet.png \
+    --pattern "sprite_(?<id>\d+)_(?<frame>\d+)"
+```
+
+The `regex-extract` plugin parses filenames, enriches properties:
+- Input: `{path: "sprite_001_002.png"}`
+- Output: `{path: "sprite_001_002.png", id: "001", frame: "002"}`
+
+Why regex: agents know regex (even if imperfectly), no new DSL to learn.
+
+## Plugins, Not Monolith
 
 Unlike pandoc/ffmpeg (which bundle everything), Cambium is:
-- **Core**: graph traversal, type detection, CLI
-- **Plugins**: actual converters, registered at runtime
+- **Core**: property bags, graph traversal, workflow orchestration, CLI
+- **Plugins**: converters, inspectors, pattern extractors
 
-```
-cambium plugin add cambium-images   # adds PNG, JPG, WebP, etc.
-cambium plugin add cambium-docs     # adds Markdown, HTML, PDF
-cambium plugin add my-custom-format # user-defined
+```bash
+cambium plugin add cambium-images   # png, jpg, webp, etc.
+cambium plugin add cambium-ffmpeg   # video/audio via ffmpeg
+cambium plugin add cambium-regex    # pattern extraction
 ```
 
-Plugins declare:
-- Types they handle (input/output)
-- Converter functions
-- Optional: quality/speed tradeoffs, lossy vs lossless
+Plugins are C ABI dynamic libraries. See [ADR-0001](./architecture-decisions.md#adr-0001-plugin-format---c-abi-dynamic-libraries).
+
+## Library-First
+
+Cambium is a library with a CLI wrapper, not vice versa.
+
+```rust
+use cambium::{Registry, Workflow};
+
+let registry = Registry::with_default_plugins()?;
+let plan = registry.plan(&from_props, &to_props)?;
+let result = registry.execute(&plan, &input, &options)?;
+```
+
+See [ADR-0002](./architecture-decisions.md#adr-0002-library-first-design).
+
+## No Special Cases
+
+Design principle: if something feels like a special case, generalize it.
+
+- "Sidecars" → just 1→N conversion
+- "Manifests" → just N→1 conversion
+- "Presets" → just option bundles
+- "Pattern extraction" → just a property-enriching converter
+- "Suggest" → just `plan` on incomplete workflow
+
+One model, many uses.
