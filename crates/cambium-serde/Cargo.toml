@@ -9,35 +9,117 @@ repository.workspace = true
 [features]
 default = ["json", "yaml", "toml"]
 
-# Text formats
+# ============================================
+# TEXT FORMATS (human-readable)
+# ============================================
+
+# JSON - The ubiquitous data interchange format
 json = ["dep:serde_json"]
+
+# YAML - Human-friendly data serialization
 yaml = ["dep:serde_yaml"]
+
+# TOML - Tom's Obvious Minimal Language (config files)
 toml = ["dep:toml"]
+
+# RON - Rusty Object Notation
 ron = ["dep:ron"]
 
-# Binary formats
-msgpack = ["dep:rmp-serde"]
-cbor = ["dep:ciborium"]
+# JSON5 - JSON with comments and trailing commas
+json5 = ["dep:json5"]
 
-# Structured text
+# Hjson - Human JSON (comments, unquoted strings)
+# hjson = ["dep:deser-hjson"]  # TODO: check compatibility
+
+# XML - Extensible Markup Language
+xml = ["dep:quick-xml"]
+
+# S-expressions - Lisp-style data (lexpr)
+lexpr = ["dep:serde-lexpr"]
+
+# URL-encoded form data
+urlencoded = ["dep:serde_urlencoded"]
+
+# Query strings (more flexible than urlencoded)
+qs = ["dep:serde_qs"]
+
+# CSV - Comma-separated values (limited: arrays of flat objects)
 csv = ["dep:csv"]
 
-# Full: all formats
-full = ["json", "yaml", "toml", "ron", "msgpack", "cbor", "csv"]
+# ============================================
+# BINARY FORMATS (compact/efficient)
+# ============================================
+
+# MessagePack - Efficient binary JSON-like format
+msgpack = ["dep:rmp-serde"]
+
+# CBOR - Concise Binary Object Representation (RFC 8949)
+cbor = ["dep:ciborium"]
+
+# Bincode - Fast binary encoding
+bincode = ["dep:bincode"]
+
+# Postcard - Embedded-friendly binary format
+postcard = ["dep:postcard"]
+
+# BSON - Binary JSON (MongoDB)
+bson = ["dep:bson"]
+
+# FlexBuffers - Schemaless FlatBuffers
+flexbuffers = ["dep:flexbuffers"]
+
+# Bencode - BitTorrent encoding
+bencode = ["dep:serde_bencode"]
+
+# Pickle - Python's serialization format
+pickle = ["dep:serde-pickle"]
+
+# Property List - Apple's plist format
+plist = ["dep:plist"]
+
+# ============================================
+# FEATURE GROUPS
+# ============================================
+
+# Common text formats
+text = ["json", "yaml", "toml", "ron", "json5", "xml"]
+
+# Common binary formats
+binary = ["msgpack", "cbor", "bincode", "postcard"]
+
+# All formats
+full = [
+    # Text
+    "json", "yaml", "toml", "ron", "json5", "xml", "lexpr",
+    "urlencoded", "qs", "csv",
+    # Binary
+    "msgpack", "cbor", "bincode", "postcard", "bson",
+    "flexbuffers", "bencode", "pickle", "plist",
+]
 
 [dependencies]
 cambium.workspace = true
 serde.workspace = true
 
-# Text formats (optional)
+# --- Text formats ---
 serde_json = { workspace = true, optional = true }
 serde_yaml = { version = "0.9", optional = true }
 toml = { version = "0.8", optional = true }
 ron = { version = "0.8", optional = true }
+json5 = { version = "0.4", optional = true }
+quick-xml = { version = "0.37", features = ["serialize"], optional = true }
+serde-lexpr = { version = "0.1", optional = true }
+serde_urlencoded = { version = "0.7", optional = true }
+serde_qs = { version = "0.13", optional = true }
+csv = { version = "1.3", optional = true }
 
-# Binary formats (optional)
+# --- Binary formats ---
 rmp-serde = { version = "1.3", optional = true }
 ciborium = { version = "0.2", optional = true }
-
-# Structured text (optional)
-csv = { version = "1.3", optional = true }
+bincode = { version = "1.3", optional = true }
+postcard = { version = "1.1", features = ["alloc"], optional = true }
+bson = { version = "2.13", optional = true }
+flexbuffers = { version = "2.0", optional = true }
+serde_bencode = { version = "0.2", optional = true }
+serde-pickle = { version = "1.1", optional = true }
+plist = { version = "1.7", optional = true }

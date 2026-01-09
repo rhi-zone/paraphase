@@ -447,13 +447,25 @@ fn cmd_convert(
 fn detect_format(path: &str) -> Option<String> {
     let ext = path.rsplit('.').next()?;
     match ext.to_lowercase().as_str() {
+        // Text formats
         "json" => Some("json".into()),
         "yaml" | "yml" => Some("yaml".into()),
         "toml" => Some("toml".into()),
         "ron" => Some("ron".into()),
+        "json5" => Some("json5".into()),
+        "xml" => Some("xml".into()),
+        "lisp" | "sexp" | "lexpr" => Some("lexpr".into()),
+        "csv" => Some("csv".into()),
+        // Binary formats
         "msgpack" | "mp" => Some("msgpack".into()),
         "cbor" => Some("cbor".into()),
-        "csv" => Some("csv".into()),
+        "bincode" | "bc" => Some("bincode".into()),
+        "postcard" | "pc" => Some("postcard".into()),
+        "bson" => Some("bson".into()),
+        "flexbuf" | "flexbuffers" => Some("flexbuffers".into()),
+        "bencode" | "torrent" => Some("bencode".into()),
+        "pickle" | "pkl" => Some("pickle".into()),
+        "plist" => Some("plist".into()),
         _ => None,
     }
 }
