@@ -598,3 +598,121 @@ steps:
 - (+) Uniform model for all N→M cases
 - (-) Slightly more verbose converter declarations
 - (-) Workflow wiring needs port references for multi-output
+
+---
+
+## ADR-0005: Conversion vs. Editing Scope Boundary
+
+**Status:** Accepted
+
+**Context:**
+
+As Cambium adds more transformations (resize, crop, watermark), the question arises: when does a "conversion tool" become an "asset editor"? Without a clear boundary, scope creep leads to reimplementing Photoshop.
+
+**Decision:** Cambium handles transformations expressible as **normalized options or property constraints**. Operations requiring **pixel-level precision or creative judgment** are out of scope.
+
+**The test:** Can an agent express the operation without looking at the specific content?
+
+**Rationale:**
+
+From the philosophy doc: "Agent says 'I have X, I need Y' - cambium finds the path." The agent shouldn't need to make creative decisions or specify exact coordinates.
+
+| Operation | Agent expression | In scope? |
+|-----------|------------------|-----------|
+| Format change | `format=webp` | ✓ |
+| Fit within bounds | `max_width=1024` | ✓ |
+| Scale by factor | `scale=0.5` | ✓ |
+| Quality preset | `quality=80` | ✓ |
+| Crop to aspect | `aspect=16:9, gravity=center` | ✓ |
+| Watermark corner | `watermark=logo.png, position=bottom-right, opacity=0.5` | ✓ |
+| Crop to pixel region | `crop_x=100, crop_y=200, crop_w=500, crop_h=400` | ✗ |
+| Watermark at coords | `watermark_x=347, watermark_y=892` | ✗ |
+| Color adjustments | `saturation=+20, hue_shift=15` | ✗ |
+| Filters/effects | `filter=sepia` | ✗ |
+
+**Normalized options:**
+
+Cambium's philosophy is one vocabulary, many backends:
+
+```bash
+# Same --max-width everywhere
+cambium convert image.png image.webp --max-width 1024
+cambium convert video.mp4 video.webp --max-width 1024
+```
+
+Options that can be normalized across domains belong in Cambium. Options that are tool-specific creative controls don't.
+
+**Multi-input operations:**
+
+Operations like watermarking require auxiliary inputs (the watermark image). These are in scope IF:
+1. Auxiliary input is a resource path (like soundfont for MIDI→WAV)
+2. Placement uses normalized presets (corners, center) not coordinates
+3. Other parameters are normalized (opacity as 0-1, not tool-specific flags)
+
+```yaml
+# In scope: normalized watermark
+source: { path: photo.jpg }
+options:
+  watermark: logo.png
+  position: bottom-right  # preset, not coordinates
+  opacity: 0.5
+sink: { path: output.jpg }
+
+# Out of scope: pixel-positioned watermark
+options:
+  watermark: logo.png
+  x: 347
+  y: 892
+```
+
+**Position presets:**
+
+For operations requiring placement, Cambium provides semantic presets:
+
+| Preset | Meaning |
+|--------|---------|
+| `top-left`, `top`, `top-right` | Corner/edge alignment |
+| `left`, `center`, `right` | Middle row |
+| `bottom-left`, `bottom`, `bottom-right` | Bottom row |
+
+Plus margin/padding as percentage or normalized units.
+
+**Gravity for cropping:**
+
+Aspect-ratio cropping uses gravity to determine what to keep:
+
+```bash
+# Crop to 16:9, keeping center
+cambium convert photo.jpg photo.jpg --aspect 16:9 --gravity center
+
+# Crop to 1:1, keeping top (for portraits/headshots)
+cambium convert photo.jpg photo.jpg --aspect 1:1 --gravity top
+```
+
+**What's explicitly out:**
+
+- **Region selection** - "crop to the face", "select the background"
+- **Content-aware operations** - seam carving, inpainting, upscaling
+- **Color grading** - curves, levels, color balance
+- **Compositing** - layers, blend modes, masks
+- **Effects** - blur, sharpen, filters
+
+These require either:
+1. Creative judgment (what looks good?)
+2. Content understanding (where is the subject?)
+3. Tool-specific expertise (Photoshop vs GIMP vs ImageMagick)
+
+For these, use the actual tool (ImageMagick, ffmpeg, etc.) directly, or a specialized asset pipeline.
+
+**Consequences:**
+
+- (+) Clear scope boundary prevents feature creep
+- (+) Agent-friendly: all operations expressible as property constraints
+- (+) Normalized options: one vocabulary across formats
+- (+) Multi-input operations possible with auxiliary resources
+- (-) Some "obvious" features excluded (arbitrary crop, filters)
+- (-) Users wanting full editing must use external tools
+
+**Future consideration:**
+
+If a transformation becomes common enough that agents frequently need it AND it can be expressed with normalized options, it can be added. The bar is: "Would an agent reasonably request this as a target constraint?"

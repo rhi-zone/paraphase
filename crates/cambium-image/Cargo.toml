@@ -37,6 +37,7 @@ all = [
 
 [dependencies]
 cambium.workspace = true
+indexmap = "2"
 image = { version = "0.25", default-features = false, features = [
     "png", "jpeg", "gif", "webp", "bmp", "ico", "tiff", "tga",
     "pnm", "ff", "qoi", "hdr",

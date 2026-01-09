@@ -2,11 +2,29 @@
 
 use anyhow::{Context, Result, bail};
 use cambium::{
-    Cardinality, ConvertOutput, Planner, Properties, PropertiesExt, PropertyPattern, Registry,
-    Sink, Source, Workflow,
+    Cardinality, ConvertOutput, NamedInput, Planner, Properties, PropertiesExt, PropertyPattern,
+    Registry, Sink, Source, Workflow,
 };
 use clap::{Parser, Subcommand};
+use indexmap::IndexMap;
 use std::path::PathBuf;
+
+/// Options for image/video transforms passed to converters.
+#[derive(Default)]
+struct ConvertOptions {
+    max_width: Option<u32>,
+    max_height: Option<u32>,
+    scale: Option<f64>,
+    aspect: Option<String>,
+    gravity: String,
+    // Watermark options
+    watermark: Option<PathBuf>,
+    watermark_position: String,
+    watermark_opacity: f64,
+    watermark_margin: u32,
+    // Video options
+    quality: Option<String>,
+}
 
 #[derive(Parser)]
 #[command(name = "cambium")]
@@ -47,6 +65,42 @@ enum Commands {
         /// Explicit target format (overrides detection)
         #[arg(long)]
         to: Option<String>,
+
+        // Image transform options
+        /// Maximum width (fit within, preserves aspect ratio)
+        #[arg(long)]
+        max_width: Option<u32>,
+        /// Maximum height (fit within, preserves aspect ratio)
+        #[arg(long)]
+        max_height: Option<u32>,
+        /// Scale factor (e.g., 0.5 for half size)
+        #[arg(long)]
+        scale: Option<f64>,
+        /// Target aspect ratio (e.g., "16:9" or "1.778")
+        #[arg(long)]
+        aspect: Option<String>,
+        /// Gravity/anchor for cropping (center, top, bottom, left, right, top-left, etc.)
+        #[arg(long, default_value = "center")]
+        gravity: String,
+
+        // Watermark options
+        /// Watermark image file to composite onto the image
+        #[arg(long)]
+        watermark: Option<PathBuf>,
+        /// Watermark position (bottom-right, top-left, center, etc.)
+        #[arg(long, default_value = "bottom-right")]
+        watermark_position: String,
+        /// Watermark opacity (0.0 to 1.0)
+        #[arg(long, default_value = "0.5")]
+        watermark_opacity: f64,
+        /// Watermark margin from edge in pixels
+        #[arg(long, default_value = "10")]
+        watermark_margin: u32,
+
+        // Video options
+        /// Video quality preset (low, medium, high, lossless)
+        #[arg(long)]
+        quality: Option<String>,
     },
 
     /// Run a workflow file
@@ -68,6 +122,9 @@ fn main() -> Result<()> {
     #[cfg(feature = "image")]
     cambium_image::register_all(&mut registry);
 
+    #[cfg(feature = "video")]
+    cambium_video::register_all(&mut registry);
+
     match cli.command {
         Commands::List => cmd_list(&registry),
         Commands::Plan {
@@ -81,7 +138,35 @@ fn main() -> Result<()> {
             output,
             from,
             to,
-        } => cmd_convert(&registry, &input, &output, from, to),
+            max_width,
+            max_height,
+            scale,
+            aspect,
+            gravity,
+            watermark,
+            watermark_position,
+            watermark_opacity,
+            watermark_margin,
+            quality,
+        } => cmd_convert(
+            &registry,
+            &input,
+            &output,
+            from,
+            to,
+            ConvertOptions {
+                max_width,
+                max_height,
+                scale,
+                aspect,
+                gravity,
+                watermark,
+                watermark_position,
+                watermark_opacity,
+                watermark_margin,
+                quality,
+            },
+        ),
         Commands::Run { workflow } => cmd_run(&registry, &workflow),
     }
 }
@@ -384,6 +469,7 @@ fn cmd_convert(
     output: &PathBuf,
     from: Option<String>,
     to: Option<String>,
+    opts: ConvertOptions,
 ) -> Result<()> {
     // Detect formats
     let source_format = from
@@ -395,42 +481,189 @@ fn cmd_convert(
         .context("Could not detect target format. Use --to to specify.")?;
 
     // Read input
-    let input_data = std::fs::read(input).context("Failed to read input file")?;
+    let mut current_data = std::fs::read(input).context("Failed to read input file")?;
+    let mut current_props = Properties::new().with("format", source_format.as_str());
 
-    // Plan conversion
-    let source_props = Properties::new().with("format", source_format.as_str());
-    let target_pattern = PropertyPattern::new().eq("format", target_format.as_str());
+    // Apply image transforms if any options are set
+    let needs_resize =
+        opts.max_width.is_some() || opts.max_height.is_some() || opts.scale.is_some();
+    let needs_crop = opts.aspect.is_some();
 
-    let planner = Planner::new(registry);
-    let plan = planner
-        .plan(
-            &source_props,
-            &target_pattern,
-            Cardinality::One,
-            Cardinality::One,
-        )
-        .context("No conversion path found")?;
+    if needs_resize || needs_crop {
+        // Get image dimensions first (we need them for the converters)
+        #[cfg(feature = "image")]
+        {
+            // Decode to get dimensions
+            let img = image::load_from_memory(&current_data)
+                .context("Failed to decode image for transform")?;
+            current_props.insert("width".into(), (img.width() as i64).into());
+            current_props.insert("height".into(), (img.height() as i64).into());
+        }
 
-    // Execute plan
-    let mut current_data = input_data;
-    let mut current_props = source_props;
+        // Apply aspect crop first (before resize)
+        if let Some(ref aspect) = opts.aspect {
+            current_props.insert("aspect".into(), aspect.clone().into());
+            current_props.insert("gravity".into(), opts.gravity.clone().into());
 
-    for step in &plan.steps {
-        let converter = registry
-            .get(&step.converter_id)
-            .context(format!("Converter not found: {}", step.converter_id))?;
+            let crop_converter = registry
+                .get("image.crop-aspect")
+                .context("Crop converter not available")?;
 
-        let result = converter
-            .convert(&current_data, &current_props)
-            .map_err(|e| anyhow::anyhow!("Conversion failed: {}", e))?;
+            let result = crop_converter
+                .convert(&current_data, &current_props)
+                .map_err(|e| anyhow::anyhow!("Crop failed: {}", e))?;
 
-        match result {
-            ConvertOutput::Single(data, props) => {
-                current_data = data;
-                current_props = props;
+            match result {
+                ConvertOutput::Single(data, props) => {
+                    current_data = data;
+                    current_props = props;
+                }
+                _ => bail!("Unexpected output from crop converter"),
             }
-            ConvertOutput::Multiple(_) => {
-                bail!("Unexpected multiple outputs from converter");
+
+            // Remove crop-specific props
+            current_props.shift_remove("aspect");
+            current_props.shift_remove("gravity");
+        }
+
+        // Apply resize
+        if needs_resize {
+            if let Some(mw) = opts.max_width {
+                current_props.insert("max_width".into(), (mw as i64).into());
+            }
+            if let Some(mh) = opts.max_height {
+                current_props.insert("max_height".into(), (mh as i64).into());
+            }
+            if let Some(s) = opts.scale {
+                current_props.insert("scale".into(), s.into());
+            }
+
+            let resize_converter = registry
+                .get("image.resize")
+                .context("Resize converter not available")?;
+
+            let result = resize_converter
+                .convert(&current_data, &current_props)
+                .map_err(|e| anyhow::anyhow!("Resize failed: {}", e))?;
+
+            match result {
+                ConvertOutput::Single(data, props) => {
+                    current_data = data;
+                    current_props = props;
+                }
+                _ => bail!("Unexpected output from resize converter"),
+            }
+
+            // Remove resize-specific props
+            current_props.shift_remove("max_width");
+            current_props.shift_remove("max_height");
+            current_props.shift_remove("scale");
+        }
+    }
+
+    // Apply watermark if specified
+    if let Some(ref watermark_path) = opts.watermark {
+        #[cfg(feature = "image")]
+        {
+            // Read watermark file
+            let watermark_data =
+                std::fs::read(watermark_path).context("Failed to read watermark file")?;
+
+            // Get watermark dimensions
+            let watermark_img = image::load_from_memory(&watermark_data)
+                .context("Failed to decode watermark image")?;
+            let mut watermark_props = Properties::new();
+            watermark_props.insert("width".into(), (watermark_img.width() as i64).into());
+            watermark_props.insert("height".into(), (watermark_img.height() as i64).into());
+
+            // Ensure base image has dimensions
+            if current_props.get("width").is_none() {
+                let img = image::load_from_memory(&current_data)
+                    .context("Failed to decode base image for watermark")?;
+                current_props.insert("width".into(), (img.width() as i64).into());
+                current_props.insert("height".into(), (img.height() as i64).into());
+            }
+
+            // Set watermark options on base image props
+            current_props.insert("position".into(), opts.watermark_position.clone().into());
+            current_props.insert("opacity".into(), opts.watermark_opacity.into());
+            current_props.insert("margin".into(), (opts.watermark_margin as i64).into());
+
+            // Build multi-input map
+            let mut inputs = IndexMap::new();
+            inputs.insert(
+                "image".to_string(),
+                NamedInput {
+                    data: &current_data,
+                    props: &current_props,
+                },
+            );
+            inputs.insert(
+                "watermark".to_string(),
+                NamedInput {
+                    data: &watermark_data,
+                    props: &watermark_props,
+                },
+            );
+
+            let watermark_converter = registry
+                .get("image.watermark")
+                .context("Watermark converter not available")?;
+
+            let result = watermark_converter
+                .convert_multi(&inputs)
+                .map_err(|e| anyhow::anyhow!("Watermark failed: {}", e))?;
+
+            match result {
+                ConvertOutput::Single(data, props) => {
+                    current_data = data;
+                    current_props = props;
+                }
+                _ => bail!("Unexpected output from watermark converter"),
+            }
+
+            // Remove watermark-specific props
+            current_props.shift_remove("position");
+            current_props.shift_remove("opacity");
+            current_props.shift_remove("margin");
+        }
+
+        #[cfg(not(feature = "image"))]
+        bail!("Watermark requires the 'image' feature");
+    }
+
+    // Plan format conversion (if formats differ)
+    if source_format != target_format {
+        let target_pattern = PropertyPattern::new().eq("format", target_format.as_str());
+
+        let planner = Planner::new(registry);
+        let plan = planner
+            .plan(
+                &current_props,
+                &target_pattern,
+                Cardinality::One,
+                Cardinality::One,
+            )
+            .context("No conversion path found")?;
+
+        // Execute format conversion plan
+        for step in &plan.steps {
+            let converter = registry
+                .get(&step.converter_id)
+                .context(format!("Converter not found: {}", step.converter_id))?;
+
+            let result = converter
+                .convert(&current_data, &current_props)
+                .map_err(|e| anyhow::anyhow!("Conversion failed: {}", e))?;
+
+            match result {
+                ConvertOutput::Single(data, props) => {
+                    current_data = data;
+                    current_props = props;
+                }
+                ConvertOutput::Multiple(_) => {
+                    bail!("Unexpected multiple outputs from converter");
+                }
             }
         }
     }
@@ -438,10 +671,28 @@ fn cmd_convert(
     // Write output
     std::fs::write(output, &current_data).context("Failed to write output file")?;
 
+    // Report what was done
+    let has_watermark = opts.watermark.is_some();
+    let transform_info = if needs_resize || needs_crop || has_watermark {
+        let w = current_props
+            .get("width")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let h = current_props
+            .get("height")
+            .and_then(|v| v.as_i64())
+            .unwrap_or(0);
+        let wm = if has_watermark { " +watermark" } else { "" };
+        format!(" ({}x{}{})", w, h, wm)
+    } else {
+        String::new()
+    };
+
     println!(
-        "Converted {} -> {} ({} bytes)",
+        "Converted {} -> {}{} ({} bytes)",
         input.display(),
         output.display(),
+        transform_info,
         current_data.len()
     );
 
@@ -486,6 +737,12 @@ fn detect_format(path: &str) -> Option<String> {
         "avif" => Some("avif".into()),
         "exr" => Some("exr".into()),
         "hdr" => Some("hdr".into()),
+        // Video formats
+        "mp4" | "m4v" => Some("mp4".into()),
+        "webm" => Some("webm".into()),
+        "mkv" => Some("mkv".into()),
+        "avi" => Some("avi".into()),
+        "mov" | "qt" => Some("mov".into()),
         _ => None,
     }
 }

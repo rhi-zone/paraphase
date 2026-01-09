@@ -14,6 +14,7 @@ cambium = { path = "crates/cambium" }
 cambium-plugin = { path = "crates/cambium-plugin" }
 cambium-serde = { path = "crates/cambium-serde" }
 cambium-image = { path = "crates/cambium-image" }
+cambium-video = { path = "crates/cambium-video" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

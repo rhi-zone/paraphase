@@ -128,6 +128,16 @@ impl ConverterDecl {
     pub fn expands(&self) -> bool {
         self.outputs.values().any(|p| p.list)
     }
+
+    /// Check if this converter has multiple input ports.
+    pub fn has_multi_input(&self) -> bool {
+        self.inputs.len() > 1
+    }
+
+    /// Get the names of all input ports.
+    pub fn input_names(&self) -> impl Iterator<Item = &str> {
+        self.inputs.keys().map(|s| s.as_str())
+    }
 }
 
 /// Result of a conversion operation.
@@ -138,6 +148,12 @@ pub enum ConvertOutput {
     Multiple(Vec<(Vec<u8>, Properties)>),
 }
 
+/// A named input for multi-input converters.
+pub struct NamedInput<'a> {
+    pub data: &'a [u8],
+    pub props: &'a Properties,
+}
+
 /// Trait for implementing converters.
 ///
 /// Converters transform data from one form to another.
@@ -145,8 +161,20 @@ pub trait Converter: Send + Sync {
     /// Get the declaration for this converter.
     fn decl(&self) -> &ConverterDecl;
 
-    /// Convert a single input.
+    /// Convert a single input (for simple converters with one "in" port).
     fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError>;
+
+    /// Convert with multiple named inputs (for multi-input converters).
+    ///
+    /// The keys in `inputs` correspond to the input port names in the declaration.
+    /// Default implementation returns an error - override for multi-input converters.
+    fn convert_multi(
+        &self,
+        inputs: &IndexMap<String, NamedInput<'_>>,
+    ) -> Result<ConvertOutput, ConvertError> {
+        let _ = inputs;
+        Err(ConvertError::MultiInputNotSupported)
+    }
 
     /// Convert a batch of inputs (for aggregating converters).
     ///
@@ -168,6 +196,12 @@ pub enum ConvertError {
 
     #[error("batch conversion not supported by this converter")]
     BatchNotSupported,
+
+    #[error("multi-input conversion not supported by this converter")]
+    MultiInputNotSupported,
+
+    #[error("missing required input port: {0}")]
+    MissingInput(String),
 
     #[error("invalid input: {0}")]
     InvalidInput(String),

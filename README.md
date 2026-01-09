@@ -24,9 +24,11 @@ The CLI supports optional converter backends:
 | `serde-all` | All 18 serde formats |
 | `image` | Image formats with defaults (png, jpeg, webp, gif) |
 | `image-all` | All 14 image formats |
+| `video` | Video formats with defaults (mp4, webm, gif) - requires FFmpeg |
+| `video-all` | All video formats |
 | `all` | Everything |
 
-Default: `serde` + `image`
+Default: `serde` + `image` (video excluded, requires FFmpeg)
 
 For minimal builds or specific formats:
 
@@ -53,6 +55,45 @@ cambium convert photo.png photo.webp
 
 # Explicit formats
 cambium convert data.bin output.json --from msgpack --to json
+```
+
+### Image transforms
+
+```bash
+# Resize to fit within max width (preserves aspect ratio)
+cambium convert photo.png thumb.png --max-width 200
+
+# Scale by factor
+cambium convert photo.png half.png --scale 0.5
+
+# Crop to aspect ratio
+cambium convert photo.png banner.png --aspect 16:9
+
+# Crop with gravity (anchor point)
+cambium convert photo.png portrait.png --aspect 3:4 --gravity top
+
+# Combine transforms with format conversion
+cambium convert photo.png avatar.webp --aspect 1:1 --max-width 150
+
+# Add watermark
+cambium convert photo.png branded.png --watermark logo.png --watermark-position bottom-right
+
+# Watermark with opacity and margin
+cambium convert photo.png branded.png --watermark logo.png \
+  --watermark-position bottom-right --watermark-opacity 0.5 --watermark-margin 20
+```
+
+### Video conversion (requires FFmpeg)
+
+```bash
+# Convert between video formats
+cambium convert video.mp4 video.webm
+
+# Resize video
+cambium convert video.mp4 small.mp4 --max-width 720
+
+# GIF to video
+cambium convert animation.gif video.mp4
 ```
 
 ### Plan conversions
@@ -139,6 +180,17 @@ sink:
 | AVIF | `avif` | .avif |
 | OpenEXR | `openexr` | .exr |
 | Radiance HDR | `hdr` | .hdr |
+
+### Video Formats (cambium-video)
+
+| Format | Feature | Extensions |
+|--------|---------|------------|
+| MP4 | `mp4` | .mp4, .m4v |
+| WebM | `webm` | .webm |
+| MKV | `mkv` | .mkv |
+| AVI | `avi` | .avi |
+| MOV | `mov` | .mov, .qt |
+| GIF | `gif` | .gif |
 
 ## Library Usage
 
