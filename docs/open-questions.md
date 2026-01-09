@@ -14,6 +14,10 @@ Unresolved design decisions for Cambium.
 - **Sidecars/manifests**: Just N→M conversions, no special case
 - **Workflow format**: Format-agnostic (YAML, TOML, JSON, etc.)
 - **Property naming**: Flat by default, namespace when semantics differ
+- **Plugin versioning**: Semver ranges (plugin declares compatible cambium versions)
+- **Cache location**: Local by default (`.cambium/cache/`), global fallback (`~/.cache/cambium/`), configurable
+- **Cache granularity**: Content-addressed with file-level dependency tracking
+- **Batch boundaries**: Soft-explicit based on invocation (CLI args = batch, tree = batch, recursive list = batch per directory)
 
 ## Core Model
 
@@ -21,10 +25,35 @@ Unresolved design decisions for Cambium.
 
 When multiple paths exist (e.g., `PNG → JPG` direct vs `PNG → RGB → JPG`), how to choose?
 
-Options:
-1. **Shortest path** - fewest hops
-2. **Weighted edges** - converters declare cost (speed? quality loss?)
-3. **User hint** - `--prefer lossless` or `--prefer fast`
+**Direction:** Converters declare costs as properties. Users provide scoring expressions.
+
+```rust
+struct ConverterDecl {
+    // ...existing fields...
+    costs: Properties,  // {quality_loss: 0.1, speed: 0.5, ...}
+}
+```
+
+```bash
+cambium convert a.png b.webp --optimize quality              # minimize quality_loss
+cambium convert a.png b.webp --optimize speed                # minimize speed cost
+cambium convert a.png b.webp --cost "0.7*quality_loss + 0.3*speed"  # weighted
+```
+
+**Open:** Expression syntax. Should be consistent across the rhizome ecosystem.
+
+**Ecosystem decision:** `rhizome-expr` crate family with one AST, multiple backends:
+
+```
+rhizome-expr/
+  core/       # AST, parsing, type checking - shared dependency
+  interp/     # interpreter (cambium cost expressions, simple cases)
+  wgsl/       # GPU shaders (resin generative assets)
+  cranelift/  # native JIT (hot paths)
+  lua/        # scripting (user-defined logic)
+```
+
+Each tool pulls only what it needs. Cambium likely just needs `core` + `interp`. Discipline: keep `core` minimal and stable, backends depend on core only.
 
 ### Property naming: what needs namespacing?
 
@@ -47,10 +76,13 @@ How do we populate initial properties from a file?
 - Plugins provide inspection: PNG plugin knows how to read PNG metadata
 - Returns `Properties` from file bytes
 
+**Concern:** Content inspection for unknown formats ("agent doesn't know, so guess") risks pulling in tons of inspection libraries even as plugins. Need to be intentional about which inspectors are bundled vs opt-in.
+
 Open:
 - Unknown formats: fail? Return minimal `{path: "...", size: N}`?
 - Streaming inspection for large files?
 - Multiple inspectors match same file? First match? Merge?
+- Which inspectors are "core" vs plugin-only?
 
 ## Plugin System
 
@@ -58,10 +90,19 @@ Open:
 
 ### Plugin versioning
 
-How to handle ABI compatibility?
-- Strict version matching (plugin must match exact cambium version)?
-- Semver ranges?
-- API version number in plugin (current approach in ADR)?
+**Decision:** Semver ranges.
+
+Plugins declare compatible cambium API versions (e.g., `^1.0`). Cambium checks compatibility at load time. Breaking API changes bump major version.
+
+```c
+// Plugin exports
+uint32_t cambium_plugin_api_version(void);  // e.g., returns 0x010000 for 1.0.0
+const char* cambium_plugin_api_compat(void); // e.g., returns "^1.0"
+```
+
+Open:
+- Exact compatibility checking semantics
+- How to handle plugins built against older minor versions
 
 ### Plugin dependencies
 
@@ -71,18 +112,23 @@ Can plugins depend on other plugins?
 
 ## Incremental Builds
 
-### What's the caching granularity?
+### Caching strategy
 
-Options:
-1. **File-level** - mtime/hash per file
-2. **Content-addressed** - hash outputs, reuse across projects
-3. **Fine-grained** - track dependencies within files
+**Decisions:**
+- **Granularity:** Content-addressed with file-level dependency tracking
+- **Location:** Local by default (`.cambium/cache/`), global fallback (`~/.cache/cambium/`), configurable
 
-### Where does cache live?
+**How they compose:**
+1. File-level tracking detects "has input changed?" (fast mtime/hash check)
+2. Content-addressed lookup finds "have we seen this exact content before?"
+3. If CA hit, reuse cached output regardless of project
 
-- `.cambium/cache/` in project?
-- Global `~/.cache/cambium/`?
-- Both with hierarchy?
+Fine-grained (sub-file dependencies) adds complexity without proportional benefit. Start with file-level + CA, add fine-grained later if needed.
+
+Open:
+- Cache eviction policy (LRU? TTL? size limit?)
+- Cache key format (include converter version? options hash?)
+- Cross-machine cache sharing (remote cache server?)
 
 ## CLI Design
 
@@ -240,17 +286,16 @@ The manifest generator needs to receive:
 - Their output paths and properties
 - But NOT other manifests or unrelated files
 
-Options:
-1. **Implicit batching** - CLI tracks batch, passes to aggregators
-2. **Explicit glob** - `requires: {glob: "**/*.{webp,glb,ogg}"}`
-3. **Tag/label** - conversions tag outputs, aggregator filters by tag
-4. **Scope** - `{scope: "current-batch"}` magic property
+**Decision:** Soft-explicit batching based on invocation:
+- CLI args as list → one batch
+- Tree invocation (`assets/`) → one batch of all files in tree
+- Recursive list invocation → separate batch per directory
 
-### Leaning toward
+CLI tracks batch context and passes to N→1 aggregators. This is implicit from the user's perspective but explicit in the runtime.
 
-Probably (B) with (1): N→1 converters are uniform, but CLI provides batching context.
+### Cardinality in ConverterDecl
 
-The converter declares it needs an array of file metadata. The CLI/runtime is responsible for collecting the batch and passing it.
+Converters declare their input/output cardinality:
 
 ```rust
 struct ConverterDecl {
@@ -261,7 +306,7 @@ struct ConverterDecl {
 }
 ```
 
-**Needs more design work** - this affects core model significantly.
+N→1 converters (like manifest generators) declare `input_cardinality: Many`. The runtime collects the batch and passes it.
 
 ### Design principles emerging
 
@@ -281,18 +326,16 @@ cambium import assets/ --manifest manifest.json
 
 ### Multi-output and "canonical"
 
-For 1→N, maybe one output is "canonical" (main file) for downstream routing:
+For 1→N, one output can optionally be marked "canonical" (main file) for downstream routing:
 
 ```rust
 produces: [
-    {format: "webp", canonical: true},   // main output
+    {format: "webp", canonical: true},   // main output, used for downstream routing by default
     {format: "json", metadata: true},     // auxiliary
 ]
 ```
 
-Or: no distinction, all outputs are equal. User specifies which to use downstream.
-
-**TODO:** Decide if `canonical` flag is needed or if flat list suffices.
+**Decision:** Optional. If no canonical marked, all outputs are equal and user specifies which to route downstream. Canonical is a convenience for common cases (main file + sidecar).
 
 ### Research needed
 
