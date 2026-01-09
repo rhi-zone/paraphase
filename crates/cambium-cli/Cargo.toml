@@ -10,8 +10,23 @@ repository.workspace = true
 name = "cambium"
 path = "src/main.rs"
 
+[features]
+default = ["serde", "image"]
+
+# Converter backends
+serde = ["dep:cambium-serde"]
+image = ["dep:cambium-image"]
+
+# Enable all formats in each backend
+serde-all = ["serde", "cambium-serde/all"]
+image-all = ["image", "cambium-image/all"]
+
+# Everything
+all = ["serde-all", "image-all"]
+
 [dependencies]
 cambium.workspace = true
-cambium-serde = { workspace = true, features = ["all"] }
+cambium-serde = { workspace = true, optional = true }
+cambium-image = { workspace = true, optional = true }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"

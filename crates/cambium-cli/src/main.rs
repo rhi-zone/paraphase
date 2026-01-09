@@ -59,9 +59,14 @@ enum Commands {
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Create registry with serde converters
+    // Create registry with enabled converters
     let mut registry = Registry::new();
+
+    #[cfg(feature = "serde")]
     cambium_serde::register_all(&mut registry);
+
+    #[cfg(feature = "image")]
+    cambium_image::register_all(&mut registry);
 
     match cli.command {
         Commands::List => cmd_list(&registry),
@@ -447,7 +452,7 @@ fn cmd_convert(
 fn detect_format(path: &str) -> Option<String> {
     let ext = path.rsplit('.').next()?;
     match ext.to_lowercase().as_str() {
-        // Text formats
+        // Serde text formats
         "json" => Some("json".into()),
         "yaml" | "yml" => Some("yaml".into()),
         "toml" => Some("toml".into()),
@@ -456,7 +461,7 @@ fn detect_format(path: &str) -> Option<String> {
         "xml" => Some("xml".into()),
         "lisp" | "sexp" | "lexpr" => Some("lexpr".into()),
         "csv" => Some("csv".into()),
-        // Binary formats
+        // Serde binary formats
         "msgpack" | "mp" => Some("msgpack".into()),
         "cbor" => Some("cbor".into()),
         "bincode" | "bc" => Some("bincode".into()),
@@ -466,6 +471,21 @@ fn detect_format(path: &str) -> Option<String> {
         "bencode" | "torrent" => Some("bencode".into()),
         "pickle" | "pkl" => Some("pickle".into()),
         "plist" => Some("plist".into()),
+        // Image formats
+        "png" => Some("png".into()),
+        "jpg" | "jpeg" => Some("jpg".into()),
+        "webp" => Some("webp".into()),
+        "gif" => Some("gif".into()),
+        "bmp" => Some("bmp".into()),
+        "ico" => Some("ico".into()),
+        "tif" | "tiff" => Some("tiff".into()),
+        "tga" => Some("tga".into()),
+        "pnm" | "pbm" | "pgm" | "ppm" | "pam" => Some("pnm".into()),
+        "ff" | "farbfeld" => Some("farbfeld".into()),
+        "qoi" => Some("qoi".into()),
+        "avif" => Some("avif".into()),
+        "exr" => Some("exr".into()),
+        "hdr" => Some("hdr".into()),
         _ => None,
     }
 }
