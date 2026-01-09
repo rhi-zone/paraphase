@@ -17,20 +17,23 @@ default = ["serde", "image"]
 serde = ["dep:cambium-serde"]
 image = ["dep:cambium-image", "dep:image"]
 video = ["dep:cambium-video"]
+audio = ["dep:cambium-audio"]
 
 # Enable all formats in each backend
 serde-all = ["serde", "cambium-serde/all"]
 image-all = ["image", "cambium-image/all"]
 video-all = ["video", "cambium-video/all"]
+audio-all = ["audio", "cambium-audio/all"]
 
 # Everything (video excluded from default, requires FFmpeg)
-all = ["serde-all", "image-all", "video-all"]
+all = ["serde-all", "image-all", "video-all", "audio-all"]
 
 [dependencies]
 cambium.workspace = true
 cambium-serde = { workspace = true, optional = true }
 cambium-image = { workspace = true, optional = true }
 cambium-video = { workspace = true, optional = true }
+cambium-audio = { workspace = true, optional = true }
 clap = { version = "4", features = ["derive"] }
 anyhow = "1"
 indexmap = "2"

@@ -147,6 +147,44 @@ cambium convert photo.png branded.png --watermark logo.png \
 - `opacity`: Watermark transparency (0.0-1.0, default 1.0)
 - `margin`: Pixels from edge (default 0)
 
+## Audio Formats (cambium-audio)
+
+Pure Rust audio processing via Symphonia (decode) and Hound (WAV encode).
+
+### Supported Formats
+
+| Format | Decode | Encode | Feature |
+|--------|--------|--------|---------|
+| WAV | ✓ | ✓ | `wav` |
+| FLAC | ✓ | - | `flac` |
+| MP3 | ✓ | - | `mp3` |
+| OGG Vorbis | ✓ | - | `ogg` |
+| AAC | ✓ | - | `aac` |
+
+**Note:** Currently all formats decode to WAV. Encoders for other formats are planned.
+
+### Feature Groups
+
+```toml
+# Cargo.toml for cambium-audio
+[features]
+default = ["wav", "flac", "mp3", "ogg"]
+all = ["wav", "flac", "mp3", "ogg", "aac"]
+```
+
+**CLI usage:**
+
+```bash
+# Convert MP3 to WAV
+cambium convert song.mp3 song.wav
+
+# Convert FLAC to WAV
+cambium convert album.flac album.wav
+
+# Convert OGG to WAV
+cambium convert audio.ogg audio.wav
+```
+
 ## Video Formats (cambium-video)
 
 All video formats use FFmpeg as the transcoding backend. **Requires FFmpeg installed at runtime.**
@@ -215,14 +253,16 @@ default = ["serde", "image"]
 serde = ["dep:cambium-serde"]
 image = ["dep:cambium-image"]
 video = ["dep:cambium-video"]  # Requires FFmpeg
+audio = ["dep:cambium-audio"]
 
 # Enable all formats per backend
 serde-all = ["serde", "cambium-serde/all"]
 image-all = ["image", "cambium-image/all"]
 video-all = ["video", "cambium-video/all"]
+audio-all = ["audio", "cambium-audio/all"]
 
 # Everything (video excluded from default, requires FFmpeg)
-all = ["serde-all", "image-all", "video-all"]
+all = ["serde-all", "image-all", "video-all", "audio-all"]
 ```
 
 ### Installation Examples

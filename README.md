@@ -26,9 +26,11 @@ The CLI supports optional converter backends:
 | `image-all` | All 14 image formats |
 | `video` | Video formats with defaults (mp4, webm, gif) - requires FFmpeg |
 | `video-all` | All video formats |
+| `audio` | Audio formats with defaults (wav, flac, mp3, ogg) - pure Rust |
+| `audio-all` | All audio formats |
 | `all` | Everything |
 
-Default: `serde` + `image` (video excluded, requires FFmpeg)
+Default: `serde` + `image` (video/audio excluded)
 
 For minimal builds or specific formats:
 
@@ -94,6 +96,16 @@ cambium convert video.mp4 small.mp4 --max-width 720
 
 # GIF to video
 cambium convert animation.gif video.mp4
+```
+
+### Audio conversion (pure Rust)
+
+```bash
+# Convert MP3 to WAV
+cambium convert song.mp3 song.wav
+
+# Convert FLAC to WAV
+cambium convert album.flac album.wav
 ```
 
 ### Plan conversions
@@ -191,6 +203,16 @@ sink:
 | AVI | `avi` | .avi |
 | MOV | `mov` | .mov, .qt |
 | GIF | `gif` | .gif |
+
+### Audio Formats (cambium-audio)
+
+| Format | Feature | Decode | Encode |
+|--------|---------|--------|--------|
+| WAV | `wav` | ✓ | ✓ |
+| FLAC | `flac` | ✓ | - |
+| MP3 | `mp3` | ✓ | - |
+| OGG | `ogg` | ✓ | - |
+| AAC | `aac` | ✓ | - |
 
 ## Library Usage
 

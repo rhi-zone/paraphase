@@ -2,12 +2,13 @@
 
 use anyhow::{Context, Result, bail};
 use cambium::{
-    Cardinality, ConvertOutput, NamedInput, Planner, Properties, PropertiesExt, PropertyPattern,
-    Registry, Sink, Source, Workflow,
+    Cardinality, ConvertOutput, ExecutionContext, Executor, NamedInput, Plan, Planner, Properties,
+    PropertiesExt, PropertyPattern, Registry, SimpleExecutor, Sink, Source, Workflow,
 };
 use clap::{Parser, Subcommand};
 use indexmap::IndexMap;
 use std::path::PathBuf;
+use std::sync::Arc;
 
 /// Options for image/video transforms passed to converters.
 #[derive(Default)]
@@ -124,6 +125,9 @@ fn main() -> Result<()> {
 
     #[cfg(feature = "video")]
     cambium_video::register_all(&mut registry);
+
+    #[cfg(feature = "audio")]
+    cambium_audio::register_all(&mut registry);
 
     match cli.command {
         Commands::List => cmd_list(&registry),
@@ -362,8 +366,8 @@ fn cmd_run(registry: &Registry, workflow_path: &PathBuf) -> Result<()> {
         .context("Workflow missing source")?;
     let sink = workflow.sink.as_ref().context("Workflow missing sink")?;
 
-    // Determine steps (explicit or auto-planned)
-    let steps = if workflow.steps.is_empty() {
+    // Determine plan (explicit steps or auto-planned)
+    let plan = if workflow.steps.is_empty() {
         // Auto-plan
         let source_props = source.to_properties();
         let target_pattern = sink.to_pattern();
@@ -375,21 +379,29 @@ fn cmd_run(registry: &Registry, workflow_path: &PathBuf) -> Result<()> {
         };
 
         let planner = Planner::new(registry);
-        let plan = planner
+        planner
             .plan(
                 &source_props,
                 &target_pattern,
                 source_cardinality,
                 Cardinality::One,
             )
-            .context("No conversion path found for workflow")?;
-
-        plan.steps
-            .iter()
-            .map(|s| s.converter_id.clone())
-            .collect::<Vec<_>>()
+            .context("No conversion path found for workflow")?
     } else {
-        workflow.steps.iter().map(|s| s.converter.clone()).collect()
+        // Build plan from explicit steps
+        Plan {
+            steps: workflow
+                .steps
+                .iter()
+                .map(|s| cambium::PlanStep {
+                    converter_id: s.converter.clone(),
+                    input_port: "in".into(),
+                    output_port: "out".into(),
+                    output_properties: Properties::new(),
+                })
+                .collect(),
+            cost: workflow.steps.len() as f64,
+        }
     };
 
     // Get input file path
@@ -408,45 +420,33 @@ fn cmd_run(registry: &Registry, workflow_path: &PathBuf) -> Result<()> {
 
     // Read input
     let input_data = std::fs::read(&input_path).context("Failed to read input file")?;
-
-    // Execute steps
-    let mut current_data = input_data;
-    let mut current_props = source.to_properties();
+    let input_props = source.to_properties();
 
     println!("Running workflow: {}", workflow_path.display());
     println!("  {} -> {}", input_path.display(), output_path.display());
     println!();
 
-    for converter_id in &steps {
-        let converter = registry
-            .get(converter_id)
-            .context(format!("Converter not found: {}", converter_id))?;
-
-        println!("  Running: {}", converter_id);
-
-        let result = converter
-            .convert(&current_data, &current_props)
-            .map_err(|e| anyhow::anyhow!("Conversion failed: {}", e))?;
-
-        match result {
-            ConvertOutput::Single(data, props) => {
-                current_data = data;
-                current_props = props;
-            }
-            ConvertOutput::Multiple(_) => {
-                bail!("Unexpected multiple outputs from converter");
-            }
-        }
+    for step in &plan.steps {
+        println!("  Running: {}", step.converter_id);
     }
 
+    // Execute using executor
+    let ctx = ExecutionContext::new(Arc::new(registry.clone()));
+    let executor = SimpleExecutor::new();
+
+    let result = executor
+        .execute(&ctx, &plan, input_data, input_props)
+        .map_err(|e| anyhow::anyhow!("Execution failed: {}", e))?;
+
     // Write output
-    std::fs::write(&output_path, &current_data).context("Failed to write output file")?;
+    std::fs::write(&output_path, &result.data).context("Failed to write output file")?;
 
     println!();
     println!(
-        "Completed: {} ({} bytes)",
+        "Completed: {} ({} bytes, {:?})",
         output_path.display(),
-        current_data.len()
+        result.data.len(),
+        result.stats.duration
     );
 
     Ok(())
@@ -646,26 +646,16 @@ fn cmd_convert(
             )
             .context("No conversion path found")?;
 
-        // Execute format conversion plan
-        for step in &plan.steps {
-            let converter = registry
-                .get(&step.converter_id)
-                .context(format!("Converter not found: {}", step.converter_id))?;
+        // Execute format conversion plan using executor
+        let ctx = ExecutionContext::new(Arc::new(registry.clone()));
+        let executor = SimpleExecutor::new();
 
-            let result = converter
-                .convert(&current_data, &current_props)
-                .map_err(|e| anyhow::anyhow!("Conversion failed: {}", e))?;
+        let result = executor
+            .execute(&ctx, &plan, current_data, current_props)
+            .map_err(|e| anyhow::anyhow!("Conversion failed: {}", e))?;
 
-            match result {
-                ConvertOutput::Single(data, props) => {
-                    current_data = data;
-                    current_props = props;
-                }
-                ConvertOutput::Multiple(_) => {
-                    bail!("Unexpected multiple outputs from converter");
-                }
-            }
-        }
+        current_data = result.data;
+        current_props = result.props;
     }
 
     // Write output
@@ -743,6 +733,12 @@ fn detect_format(path: &str) -> Option<String> {
         "mkv" => Some("mkv".into()),
         "avi" => Some("avi".into()),
         "mov" | "qt" => Some("mov".into()),
+        // Audio formats
+        "wav" | "wave" => Some("wav".into()),
+        "flac" => Some("flac".into()),
+        "mp3" => Some("mp3".into()),
+        "ogg" | "oga" => Some("ogg".into()),
+        "aac" | "m4a" => Some("aac".into()),
         _ => None,
     }
 }

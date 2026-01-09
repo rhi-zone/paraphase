@@ -716,3 +716,263 @@ For these, use the actual tool (ImageMagick, ffmpeg, etc.) directly, or a specia
 **Future consideration:**
 
 If a transformation becomes common enough that agents frequently need it AND it can be expressed with normalized options, it can be added. The bar is: "Would an agent reasonably request this as a target constraint?"
+
+---
+
+## ADR-0006: Executor Abstraction for Resource Management
+
+**Status:** Accepted
+
+**Context:**
+
+Cambium's current architecture has three layers:
+1. **Converters** - individual transformations (bytes → bytes)
+2. **Planner** - finds conversion paths
+3. **CLI** - orchestrates execution
+
+The CLI currently has hardcoded sequential execution. As we add parallelism, streaming, and memory management, these concerns shouldn't pollute the core.
+
+Problem cases:
+- 100 large images × 8 threads = OOM (no memory budget)
+- 1-hour audio file = 635 MB in memory (no streaming)
+- Batch directory conversion = sequential (no parallelism)
+
+**Decision:** Extract execution into a separate `Executor` trait. Core stays pure (planning, converters). Execution policy is pluggable.
+
+**Architecture:**
+
+```
+┌─────────────────────────────────────────┐
+│            Executor                     │  ← HOW to run (resources, parallelism)
+├─────────────────────────────────────────┤
+│            Planner                      │  ← WHAT path to take
+├─────────────────────────────────────────┤
+│       Registry + Converters             │  ← WHAT conversions exist
+└─────────────────────────────────────────┘
+```
+
+**Executor trait:**
+
+```rust
+/// Execution context and resource constraints
+pub struct ExecutionContext {
+    pub registry: Arc<Registry>,
+    pub memory_limit: Option<usize>,
+    pub parallelism: Option<usize>,
+}
+
+/// Result of executing a plan
+pub struct ExecutionResult {
+    pub data: Vec<u8>,
+    pub props: Properties,
+    pub stats: ExecutionStats,
+}
+
+pub struct ExecutionStats {
+    pub duration: Duration,
+    pub peak_memory: usize,
+    pub steps_executed: usize,
+}
+
+/// Executor determines HOW a plan runs
+pub trait Executor: Send + Sync {
+    /// Execute a single conversion plan
+    fn execute(
+        &self,
+        ctx: &ExecutionContext,
+        plan: &Plan,
+        input: Vec<u8>,
+        props: Properties,
+    ) -> Result<ExecutionResult, ExecuteError>;
+
+    /// Execute batch of independent conversions
+    fn execute_batch(
+        &self,
+        ctx: &ExecutionContext,
+        jobs: Vec<Job>,
+    ) -> Vec<Result<ExecutionResult, ExecuteError>> {
+        // Default: sequential
+        jobs.into_iter()
+            .map(|job| self.execute(ctx, &job.plan, job.input, job.props))
+            .collect()
+    }
+}
+```
+
+**Executor implementations:**
+
+| Executor | Behavior | Use case |
+|----------|----------|----------|
+| `SimpleExecutor` | Sequential, unbounded memory | CLI default, small files |
+| `BoundedExecutor` | Sequential, memory tracking | Large files, fail-fast on OOM risk |
+| `ParallelExecutor` | Rayon + memory semaphore | Batch processing |
+| `StreamingExecutor` | Chunk-based I/O | Huge files (future) |
+
+**Memory budget:**
+
+```rust
+pub struct MemoryBudget {
+    limit: usize,
+    used: AtomicUsize,
+}
+
+impl MemoryBudget {
+    /// Try to reserve memory, returns None if would exceed limit
+    pub fn try_reserve(&self, bytes: usize) -> Option<MemoryPermit>;
+
+    /// Block until memory available (for async executor)
+    pub async fn reserve(&self, bytes: usize) -> MemoryPermit;
+}
+
+pub struct MemoryPermit<'a> {
+    budget: &'a MemoryBudget,
+    bytes: usize,
+}
+
+impl Drop for MemoryPermit<'_> {
+    fn drop(&mut self) {
+        self.budget.release(self.bytes);
+    }
+}
+```
+
+**Size estimation:**
+
+Executors estimate memory needs before execution:
+
+```rust
+/// Estimate peak memory for a conversion
+fn estimate_memory(input_size: usize, plan: &Plan) -> usize {
+    let mut estimate = input_size;
+    for step in &plan.steps {
+        estimate = match step.converter_id.as_str() {
+            // Audio: decode expands ~10x (MP3→PCM)
+            s if s.starts_with("audio.") => estimate * 10,
+            // Images: decode to RGBA, roughly width×height×4
+            s if s.starts_with("image.") => estimate * 4,
+            // Video: frame buffer, huge
+            s if s.starts_with("video.") => estimate * 100,
+            // Serde: roughly same size
+            _ => estimate,
+        };
+    }
+    estimate
+}
+```
+
+This is a heuristic - converters could declare their expansion factor for better estimates.
+
+**Parallel executor with backpressure:**
+
+```rust
+impl Executor for ParallelExecutor {
+    fn execute_batch(
+        &self,
+        ctx: &ExecutionContext,
+        jobs: Vec<Job>,
+    ) -> Vec<Result<ExecutionResult, ExecuteError>> {
+        let budget = MemoryBudget::new(ctx.memory_limit.unwrap_or(usize::MAX));
+
+        jobs.into_par_iter()
+            .map(|job| {
+                let estimate = estimate_memory(job.input.len(), &job.plan);
+
+                // Backpressure: wait for memory
+                let _permit = budget.try_reserve(estimate)
+                    .ok_or(ExecuteError::MemoryLimitExceeded)?;
+
+                self.execute_single(ctx, &job.plan, job.input, job.props)
+            })
+            .collect()
+    }
+}
+```
+
+**CLI integration:**
+
+```rust
+fn main() {
+    let registry = Registry::new();
+    // ... register converters ...
+
+    let executor: Box<dyn Executor> = if args.parallel {
+        Box::new(ParallelExecutor::new(args.memory_limit))
+    } else {
+        Box::new(SimpleExecutor::new())
+    };
+
+    let ctx = ExecutionContext {
+        registry: Arc::new(registry),
+        memory_limit: args.memory_limit,
+        parallelism: args.jobs,
+    };
+
+    match args.command {
+        Command::Convert { input, output, .. } => {
+            let plan = ctx.registry.plan(...)?;
+            let result = executor.execute(&ctx, &plan, data, props)?;
+            std::fs::write(output, result.data)?;
+        }
+        Command::Batch { inputs, .. } => {
+            let jobs = inputs.iter().map(|i| make_job(i)).collect();
+            let results = executor.execute_batch(&ctx, jobs);
+            // ... handle results ...
+        }
+    }
+}
+```
+
+**Streaming (future):**
+
+For truly large files, streaming requires a different interface:
+
+```rust
+pub trait StreamingExecutor {
+    fn execute_streaming(
+        &self,
+        ctx: &ExecutionContext,
+        plan: &Plan,
+        input: impl Read,
+        output: impl Write,
+        props: Properties,
+    ) -> Result<Properties, ExecuteError>;
+}
+```
+
+This only works if ALL converters in the plan support streaming. The planner would need to track this:
+
+```rust
+impl Plan {
+    /// Can this plan be executed in streaming mode?
+    pub fn supports_streaming(&self) -> bool {
+        self.steps.iter().all(|s| s.supports_streaming)
+    }
+}
+```
+
+For now, we defer streaming to a future ADR. Memory-bounded parallel execution solves the immediate problem.
+
+**Rationale:**
+
+1. **Separation of concerns** - Core stays pure, resource management is policy
+2. **Pluggable** - Different executors for different contexts (CLI vs server vs embedded)
+3. **Incremental** - Start with SimpleExecutor, add ParallelExecutor, defer StreamingExecutor
+4. **Testable** - Can test converters without executor, test executor with mock converters
+
+**Consequences:**
+
+- (+) Core unchanged - Converter trait stays simple
+- (+) CLI chooses executor based on flags
+- (+) Memory budget prevents OOM in batch processing
+- (+) Path to streaming without redesigning converters
+- (-) Extra abstraction layer
+- (-) Size estimation is heuristic (could be wrong)
+- (-) Streaming still requires converter changes (future work)
+
+**Migration:**
+
+1. Add `Executor` trait and `SimpleExecutor` to core
+2. Refactor CLI to use executor
+3. Add `BoundedExecutor` with memory tracking
+4. Add `ParallelExecutor` with rayon + budget
+5. (Future) Add streaming support per-converter

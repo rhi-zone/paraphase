@@ -9,6 +9,7 @@ use std::sync::Arc;
 ///
 /// The registry holds converter declarations and (optionally) their implementations.
 /// It provides methods for querying which converters can handle given properties.
+#[derive(Clone)]
 pub struct Registry {
     /// Converter declarations indexed by ID.
     declarations: IndexMap<String, ConverterDecl>,
