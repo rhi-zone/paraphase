@@ -492,3 +492,109 @@ requires: {format: Exact("pdf")}
 produces: {format: "png", width: <from_options>, height: <from_options>}
 removes: [pages, ...]  // PDF-specific props don't apply to image
 ```
+
+---
+
+## ADR-0004: Named Ports with Per-Port Cardinality
+
+**Status:** Accepted
+
+**Context:**
+
+Cambium needs to handle N→M conversions (1→1, 1→N, N→1, N→M). Early designs tried to encode cardinality in PropertyPattern itself (via `$each` syntax or separate Cardinality enum), which felt awkward and coupled concerns.
+
+Prior art: [ComfyUI](https://github.com/comfyanonymous/ComfyUI) uses named input/output ports with explicit types, handling multiple outputs and list/batch processing cleanly.
+
+**Decision:** Named ports with per-port cardinality.
+
+```rust
+struct ConverterDecl {
+    inputs: HashMap<String, PortDecl>,
+    outputs: HashMap<String, PortDecl>,
+    costs: Properties,
+}
+
+struct PortDecl {
+    pattern: PropertyPattern,
+    list: bool,  // true = expects/produces list
+}
+```
+
+**Rationale:**
+
+1. **Separation of concerns** - Property patterns describe "what kind of data", cardinality describes "how many". Orthogonal.
+2. **Explicit wiring** - Multi-output converters have named ports; workflows reference them unambiguously (`step.output_name`).
+3. **Composable** - Multiple inputs, multiple outputs, lists - all combinations work uniformly.
+4. **Planning stays simple** - Planning infers cardinality from source/target, tracks through graph using transformation rules.
+
+**Examples:**
+
+```rust
+// 1→1 (most common)
+inputs: { "in": PortDecl { pattern: {format: "png"}, list: false } }
+outputs: { "out": PortDecl { pattern: {format: "webp"}, list: false } }
+
+// N→1 aggregator (frames → video)
+inputs: { "frames": PortDecl { pattern: {format: "png"}, list: true } }
+outputs: { "video": PortDecl { pattern: {format: "mp4"}, list: false } }
+
+// 1→N expander (video → frames)
+inputs: { "video": PortDecl { pattern: {format: "mp4"}, list: false } }
+outputs: { "frames": PortDecl { pattern: {format: "png"}, list: true } }
+
+// Multiple outputs (image + sidecar)
+inputs: { "in": PortDecl { pattern: {format: "png"}, list: false } }
+outputs: {
+    "image": PortDecl { pattern: {format: "webp"}, list: false },
+    "sidecar": PortDecl { pattern: {format: "json"}, list: false }
+}
+
+// Multiple inputs (compositing)
+inputs: {
+    "base": PortDecl { pattern: {format: "png"}, list: false },
+    "overlay": PortDecl { pattern: {format: "png"}, list: false }
+}
+outputs: { "out": PortDecl { pattern: {format: "png"}, list: false } }
+```
+
+**Cardinality transformation rules:**
+
+| Input `list` | Output `list` | Behavior |
+|--------------|---------------|----------|
+| false | false | 1→1, auto-maps over batch |
+| true | false | N→1, aggregation |
+| false | true | 1→N, expansion |
+| true | true | N→M, transform |
+
+**Planning:**
+
+Planning infers cardinality from the request:
+- `bob_*.png` (glob) → N items
+- `bob.gif` (single path) → 1 item
+
+Planner searches for path where cardinality transforms correctly from source to target.
+
+**Workflow wiring:**
+
+```yaml
+steps:
+  - id: convert
+    converter: with-sidecar
+
+  - id: optimize
+    converter: webp-optimize
+    input: convert.image    # reference specific port
+
+  - id: validate
+    converter: json-schema
+    input: convert.sidecar  # reference other port
+```
+
+**Consequences:**
+
+- (+) Clean separation: patterns vs cardinality
+- (+) Multi-output handled naturally via named ports
+- (+) Planning stays property-based, cardinality is inferred
+- (+) Uniform model for all N→M cases
+- (-) Slightly more verbose converter declarations
+- (-) Workflow wiring needs port references for multi-output

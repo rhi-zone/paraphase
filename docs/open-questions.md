@@ -17,7 +17,11 @@ Unresolved design decisions for Cambium.
 - **Plugin versioning**: Semver ranges (plugin declares compatible cambium versions)
 - **Cache location**: Local by default (`.cambium/cache/`), global fallback (`~/.cache/cambium/`), configurable
 - **Cache granularity**: Content-addressed with file-level dependency tracking
-- **Batch boundaries**: Soft-explicit based on invocation (CLI args = batch, tree = batch, recursive list = batch per directory)
+- **Caching implementation**: Plugin crate (`cambium-cache`), not baked into core
+- **Batch boundaries**: Soft-explicit based on invocation (CLI args = batch, tree = batch, recursive = batch per dir)
+- **Converter model**: Named ports with per-port cardinality (`list: bool`), inspired by ComfyUI
+- **Planning cardinality**: Inferred from source/target, tracked through graph
+- **Expression syntax**: Use Dew (`dew-core` + `dew-scalar`) for cost expressions
 
 ## Core Model
 
@@ -42,18 +46,22 @@ cambium convert a.png b.webp --cost "0.7*quality_loss + 0.3*speed"  # weighted
 
 **Open:** Expression syntax. Should be consistent across the rhizome ecosystem.
 
-**Ecosystem decision:** `rhizome-expr` crate family with one AST, multiple backends:
+**Ecosystem decision:** Use [Dew](https://github.com/rhizome-lab/dew) - minimal expression language for procedural generation.
 
 ```
-rhizome-expr/
-  core/       # AST, parsing, type checking - shared dependency
-  interp/     # interpreter (cambium cost expressions, simple cases)
-  wgsl/       # GPU shaders (resin generative assets)
-  cranelift/  # native JIT (hot paths)
-  lua/        # scripting (user-defined logic)
+dew-core       # Syntax only: AST, parsing
+    |
+    +-- dew-scalar     # Scalar domain: f32/f64 math functions
+    |                  # Backends: wgsl, lua, cranelift (via features)
+    |
+    +-- dew-linalg     # Linalg domain: Vec2, Vec3, Mat2, Mat3, etc.
+    |
+    +-- dew-complex    # Complex numbers
+    |
+    +-- dew-quaternion # Quaternions
 ```
 
-Each tool pulls only what it needs. Cambium likely just needs `core` + `interp`. Discipline: keep `core` minimal and stable, backends depend on core only.
+Cambium likely just needs `dew-core` + `dew-scalar` for cost expressions. Each domain crate has self-contained backends (wgsl, lua, cranelift) as features.
 
 ### Property naming: what needs namespacing?
 
@@ -117,6 +125,7 @@ Can plugins depend on other plugins?
 **Decisions:**
 - **Granularity:** Content-addressed with file-level dependency tracking
 - **Location:** Local by default (`.cambium/cache/`), global fallback (`~/.cache/cambium/`), configurable
+- **Implementation:** Plugin crate (`cambium-cache`), not baked into core
 
 **How they compose:**
 1. File-level tracking detects "has input changed?" (fast mtime/hash check)
@@ -124,6 +133,8 @@ Can plugins depend on other plugins?
 3. If CA hit, reuse cached output regardless of project
 
 Fine-grained (sub-file dependencies) adds complexity without proportional benefit. Start with file-level + CA, add fine-grained later if needed.
+
+Core provides hooks for caching; the cache plugin implements the actual storage/lookup.
 
 Open:
 - Cache eviction policy (LRU? TTL? size limit?)
@@ -175,170 +186,108 @@ Options:
 2. **Shared IR crate** - `rhizome-types` used by both
 3. **Cambium defines IRs** - Resin depends on cambium's `Image` type
 
-## Multi-Input / Multi-Output (N→M Conversions)
+## Converter Model (N→M Conversions)
 
-This is a significant design area that needs careful thought.
+**Prior art:** [ComfyUI](https://github.com/comfyanonymous/ComfyUI) - node-based workflow with named ports, multiple outputs, list handling.
 
-### Examples
+### Named Ports
 
-| Pattern | Example |
-|---------|---------|
-| N→1 | frames → video, SVGs → icon font, files → manifest |
-| 1→N | video → frames, archive → files |
-| N→M | batch tree conversion |
-
-### How does this fit property bags?
-
-For 1→1, we have:
-```
-{format: png, width: 1024} → {format: webp, width: 1024}
-```
-
-For N→1, options:
-```
-# Option A: Array of property bags as input
-[{format: png, path: "01.png"}, {format: png, path: "02.png"}, ...] → {format: gif}
-
-# Option B: "Collection" type
-{type: collection, items: [...], ...} → {format: gif}
-
-# Option C: Directory as type
-{type: directory, path: "frames/", ...} → {format: gif}
-```
-
-### How do converters declare multi-input?
-
-```rust
-// Current: single input
-requires: {format: Exact("png")}
-
-// Multi-input options:
-requires: Array({format: Exact("png")})  // array of matching items
-requires: {type: "collection", item_format: "png"}  // special collection type
-```
-
-### How does search/planning work?
-
-For 1→1: state-space search, straightforward.
-
-For N→1: when does the "aggregation" step happen?
-- After all 1→1 conversions complete?
-- Need to track "batch" context?
-
-For 1→N: produces multiple outputs, each needs properties.
-- Does the converter declare output patterns?
-- How does downstream routing work?
-
-## Manifest Generation (Specific Case of N→1)
-
-### Requirements
-
-1. Needs metadata from ALL converted files (not file contents)
-2. Must run AFTER individual conversions complete
-3. Must NOT include other manifests (avoid recursion)
-4. Target-specific (Godot, Unity, custom)
-
-### Options Explored
-
-**Option A: PostProcessor trait (special-cased)**
-```rust
-trait ManifestGenerator {
-    fn includes(&self, props: &Properties) -> bool;
-    fn generate(&self, files: &[FileInfo]) -> Result<Vec<u8>>;
-}
-```
-- Con: breaks uniformity, special type of operation
-
-**Option B: N→1 converter (uniform)**
-```rust
-// Manifest generator is just a converter
-requires: [{type: file, is_manifest: false}, ...]  // array input
-produces: {format: "godot-import-manifest"}
-```
-- Pro: fits existing model
-- Con: how to express "all files from this batch"?
-
-**Option C: Directory as input type**
-```rust
-requires: {type: directory, path: "..."}
-produces: {format: "godot-import-manifest"}
-```
-- Pro: uniform, directory is just another type with contents
-- Con: contents property could be huge
-
-**Option D: Pipeline phases / hooks**
-- Pipeline has stages: inspect → convert → aggregate → finalize
-- N→1 converters automatically run in aggregate phase
-- Pro: clear ordering without explicit orchestration
-- Con: implicit staging rules
-- Con: overoptimizing for one case - may not generalize
-
-### The "all files from this batch" problem
-
-How does a manifest generator know which files to include?
-
-```bash
-cambium import assets/ --target godot
-```
-
-The manifest generator needs to receive:
-- All files that were just converted
-- Their output paths and properties
-- But NOT other manifests or unrelated files
-
-**Decision:** Soft-explicit batching based on invocation:
-- CLI args as list → one batch
-- Tree invocation (`assets/`) → one batch of all files in tree
-- Recursive list invocation → separate batch per directory
-
-CLI tracks batch context and passes to N→1 aggregators. This is implicit from the user's perspective but explicit in the runtime.
-
-### Cardinality in ConverterDecl
-
-Converters declare their input/output cardinality:
+Converters have named input and output ports, each with a property pattern and cardinality:
 
 ```rust
 struct ConverterDecl {
-    input_cardinality: Cardinality,  // One, Many, OneOrMore
-    output_cardinality: Cardinality,
-    requires: PropertyPattern,
-    produces: PropertyPattern,
+    inputs: HashMap<String, PortDecl>,
+    outputs: HashMap<String, PortDecl>,
+    costs: Properties,  // for path optimization
+}
+
+struct PortDecl {
+    pattern: PropertyPattern,
+    list: bool,  // true = expects/produces list
 }
 ```
 
-N→1 converters (like manifest generators) declare `input_cardinality: Many`. The runtime collects the batch and passes it.
-
-### Design principles emerging
-
-1. **No special-casing** - sidecars, manifests, etc. are just N→M conversions
-2. **Cardinality is declared** - converters say 1→1, 1→N, N→1, N→M
-3. **Orchestration collects inputs** - CLI/runtime groups files, passes to converters
-4. **User-defined manifests** - manifest format is just another converter output
-
-```bash
-# User wants: import files + generate custom JSON manifest
-cambium import assets/ --manifest manifest.json
-
-# This runs:
-# 1. Individual conversions (1→1 or 1→N each)
-# 2. Manifest converter (N→1): [{path, format, ...}, ...] → JSON array
-```
-
-### Multi-output and "canonical"
-
-For 1→N, one output can optionally be marked "canonical" (main file) for downstream routing:
+### Examples
 
 ```rust
-produces: [
-    {format: "webp", canonical: true},   // main output, used for downstream routing by default
-    {format: "json", metadata: true},     // auxiliary
-]
+// 1→1 (most common)
+inputs: { "in": { pattern: {format: "png"}, list: false } }
+outputs: { "out": { pattern: {format: "webp"}, list: false } }
+
+// N→1 aggregator (frames → video)
+inputs: { "frames": { pattern: {format: "png"}, list: true } }
+outputs: { "video": { pattern: {format: "mp4"}, list: false } }
+
+// 1→N expander (video → frames)
+inputs: { "video": { pattern: {format: "mp4"}, list: false } }
+outputs: { "frames": { pattern: {format: "png"}, list: true } }
+
+// Multiple outputs (image + sidecar)
+inputs: { "in": { pattern: {format: "png"}, list: false } }
+outputs: {
+    "image": { pattern: {format: "webp"}, list: false },
+    "sidecar": { pattern: {format: "json"}, list: false }
+}
+
+// Multiple inputs (compositing)
+inputs: {
+    "base": { pattern: {format: "png"}, list: false },
+    "overlay": { pattern: {format: "png"}, list: false }
+}
+outputs: { "out": { pattern: {format: "png"}, list: false } }
 ```
 
-**Decision:** Optional. If no canonical marked, all outputs are equal and user specifies which to route downstream. Canonical is a convenience for common cases (main file + sidecar).
+### Workflow Wiring
 
-### Research needed
+Workflows reference specific ports:
 
-- Walk through complete import flow for 2-3 targets (Godot, Unity, custom)
-- Identify patterns: what's 1→1, 1→N, N→1, N→M
-- Verify framework handles all cases without special-casing
+```yaml
+steps:
+  - id: convert
+    converter: with-sidecar
+
+  - id: optimize
+    converter: webp-optimize
+    input: convert.image    # specific output port
+
+  - id: validate
+    converter: json-schema
+    input: convert.sidecar  # other output port
+```
+
+### Cardinality-Aware Planning
+
+Planning infers cardinality from source/target and tracks through the graph:
+
+```
+Request: bob_*.png → bob.gif
+
+Inferred:
+  - Source: N items (glob)
+  - Target: 1 item (single path)
+
+Plan:
+  N × {format: png}
+         │
+         ▼ [resize] (list:false, auto-maps over batch)
+  N × {format: png, width: 100}
+         │
+         ▼ [frames-to-gif] (list:true input, aggregates)
+  1 × {format: gif}
+         │
+         Done!
+```
+
+Cardinality transformation rules:
+- `list:false → list:false`: maps over N, preserves cardinality
+- `list:true → list:false`: consumes N, produces 1 (aggregation)
+- `list:false → list:true`: consumes 1, produces N (expansion)
+- `list:true → list:true`: consumes N, produces M (transform)
+
+### Design Principles
+
+1. **Named ports** - explicit wiring, no ambiguity for multi-output
+2. **Cardinality per-port** - `list: bool`, orthogonal to property pattern
+3. **Planning infers cardinality** - from source (glob vs file) and target (single vs pattern)
+4. **No special cases** - sidecars, manifests, spritesheets all use same model
+5. **Batch context from invocation** - CLI args = batch, tree = batch, recursive = batch per dir
