@@ -1,0 +1,14 @@
+//! Cambium: Type-driven data transformation pipeline
+//!
+//! Cambium is a route planner for data conversion. Given source and target
+//! properties, it finds a path through available converters.
+
+mod converter;
+mod pattern;
+mod properties;
+mod registry;
+
+pub use converter::{ConvertError, ConvertOutput, Converter, ConverterDecl, PortDecl};
+pub use pattern::{Predicate, PropertyPattern};
+pub use properties::{Properties, PropertiesExt, Value};
+pub use registry::Registry;

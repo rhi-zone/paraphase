@@ -1,0 +1,24 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/rhizome-labs/cambium"
+
+[workspace.dependencies]
+# Internal
+cambium = { path = "crates/cambium" }
+cambium-plugin = { path = "crates/cambium-plugin" }
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+thiserror = "2"
+
+# Collections
+indexmap = { version = "2", features = ["serde"] }
