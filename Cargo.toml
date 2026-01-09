@@ -12,6 +12,7 @@ repository = "https://github.com/rhizome-labs/cambium"
 # Internal
 cambium = { path = "crates/cambium" }
 cambium-plugin = { path = "crates/cambium-plugin" }
+cambium-serde = { path = "crates/cambium-serde" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

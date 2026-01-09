@@ -1,0 +1,43 @@
+[package]
+name = "cambium-serde"
+description = "Serde-based format converters for Cambium"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["json", "yaml", "toml"]
+
+# Text formats
+json = ["dep:serde_json"]
+yaml = ["dep:serde_yaml"]
+toml = ["dep:toml"]
+ron = ["dep:ron"]
+
+# Binary formats
+msgpack = ["dep:rmp-serde"]
+cbor = ["dep:ciborium"]
+
+# Structured text
+csv = ["dep:csv"]
+
+# Full: all formats
+full = ["json", "yaml", "toml", "ron", "msgpack", "cbor", "csv"]
+
+[dependencies]
+cambium.workspace = true
+serde.workspace = true
+
+# Text formats (optional)
+serde_json = { workspace = true, optional = true }
+serde_yaml = { version = "0.9", optional = true }
+toml = { version = "0.8", optional = true }
+ron = { version = "0.8", optional = true }
+
+# Binary formats (optional)
+rmp-serde = { version = "1.3", optional = true }
+ciborium = { version = "0.2", optional = true }
+
+# Structured text (optional)
+csv = { version = "1.3", optional = true }
