@@ -31,7 +31,7 @@ impl Container {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "mp4" => Some(Container::Mp4),
             "webm" => Some(Container::Webm),
@@ -102,7 +102,7 @@ pub enum Quality {
 }
 
 impl Quality {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "low" | "l" => Some(Quality::Low),
             "medium" | "med" | "m" => Some(Quality::Medium),
@@ -139,7 +139,7 @@ impl VideoConverter {
             PropertyPattern::new().eq("format", from.as_str()),
             PropertyPattern::new().eq("format", to.as_str()),
         )
-        .description(&format!(
+        .description(format!(
             "Convert {} to {}",
             from.as_str().to_uppercase(),
             to.as_str().to_uppercase()
@@ -159,7 +159,7 @@ impl Converter for VideoConverter {
         let quality = props
             .get("quality")
             .and_then(|v| v.as_str())
-            .and_then(Quality::from_str)
+            .and_then(Quality::parse)
             .unwrap_or_default();
 
         let max_width = props
@@ -184,7 +184,7 @@ impl Converter for VideoConverter {
 
         // Merge transcoder output properties
         for (k, v) in out_props {
-            final_props.insert(k.into(), v.into());
+            final_props.insert(k, v.into());
         }
 
         Ok(ConvertOutput::Single(output, final_props))
@@ -224,13 +224,13 @@ impl Converter for VideoResizeConverter {
         let format = props
             .get("format")
             .and_then(|v| v.as_str())
-            .and_then(Container::from_str)
+            .and_then(Container::parse)
             .ok_or_else(|| ConvertError::InvalidInput("Unknown video format".into()))?;
 
         let quality = props
             .get("quality")
             .and_then(|v| v.as_str())
-            .and_then(Quality::from_str)
+            .and_then(Quality::parse)
             .unwrap_or_default();
 
         let max_width = props
@@ -256,7 +256,7 @@ impl Converter for VideoResizeConverter {
 
         let mut final_props = props.clone();
         for (k, v) in out_props {
-            final_props.insert(k.into(), v.into());
+            final_props.insert(k, v.into());
         }
 
         Ok(ConvertOutput::Single(output, final_props))

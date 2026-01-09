@@ -36,7 +36,7 @@ impl AudioFormat {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
             "wav" | "wave" => Some(AudioFormat::Wav),
             "flac" => Some(AudioFormat::Flac),
@@ -108,7 +108,7 @@ fn decode_audio(input: &[u8], hint: Option<&str>) -> Result<DecodedAudio, Conver
     let sample_rate = codec_params.sample_rate.unwrap_or(44100);
 
     let mut decoder = symphonia::default::get_codecs()
-        .make(&codec_params, &DecoderOptions::default())
+        .make(codec_params, &DecoderOptions::default())
         .map_err(|e| ConvertError::InvalidInput(format!("Failed to create decoder: {}", e)))?;
 
     let track_id = track.id;
@@ -272,7 +272,7 @@ impl AudioToWavConverter {
             PropertyPattern::new().eq("format", from.as_str()),
             PropertyPattern::new().eq("format", "wav"),
         )
-        .description(&format!("Convert {} to WAV", from.as_str().to_uppercase()));
+        .description(format!("Convert {} to WAV", from.as_str().to_uppercase()));
 
         Self { decl, from }
     }
@@ -367,11 +367,11 @@ mod tests {
 
     #[test]
     fn test_audio_format_parsing() {
-        assert_eq!(AudioFormat::from_str("wav"), Some(AudioFormat::Wav));
-        assert_eq!(AudioFormat::from_str("WAV"), Some(AudioFormat::Wav));
-        assert_eq!(AudioFormat::from_str("mp3"), Some(AudioFormat::Mp3));
-        assert_eq!(AudioFormat::from_str("flac"), Some(AudioFormat::Flac));
-        assert_eq!(AudioFormat::from_str("ogg"), Some(AudioFormat::Ogg));
-        assert_eq!(AudioFormat::from_str("invalid"), None);
+        assert_eq!(AudioFormat::parse("wav"), Some(AudioFormat::Wav));
+        assert_eq!(AudioFormat::parse("WAV"), Some(AudioFormat::Wav));
+        assert_eq!(AudioFormat::parse("mp3"), Some(AudioFormat::Mp3));
+        assert_eq!(AudioFormat::parse("flac"), Some(AudioFormat::Flac));
+        assert_eq!(AudioFormat::parse("ogg"), Some(AudioFormat::Ogg));
+        assert_eq!(AudioFormat::parse("invalid"), None);
     }
 }

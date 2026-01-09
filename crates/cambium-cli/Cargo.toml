@@ -38,6 +38,9 @@ cambium-image = { workspace = true, optional = true }
 cambium-video = { workspace = true, optional = true }
 cambium-audio = { workspace = true, optional = true }
 clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+clap_mangen = "0.2"
+indicatif = "0.17"
 anyhow = "1"
 indexmap = "2"
 image = { version = "0.25", default-features = false, optional = true }

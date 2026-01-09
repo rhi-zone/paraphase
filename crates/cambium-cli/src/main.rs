@@ -6,10 +6,51 @@ use cambium::{
     Planner, Properties, PropertiesExt, PropertyPattern, Registry, SimpleExecutor, Sink, Source,
     Workflow,
 };
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{Shell, generate};
 use indexmap::IndexMap;
+use indicatif::{ProgressBar, ProgressStyle};
+use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
+
+/// Output verbosity level.
+#[derive(Clone, Copy)]
+enum Verbosity {
+    Quiet,
+    Normal,
+    Verbose,
+}
+
+impl Verbosity {
+    fn from_flags(verbose: bool, quiet: bool) -> Self {
+        if quiet {
+            Verbosity::Quiet
+        } else if verbose {
+            Verbosity::Verbose
+        } else {
+            Verbosity::Normal
+        }
+    }
+
+    fn info(self, msg: &str) {
+        if !matches!(self, Verbosity::Quiet) {
+            println!("{msg}");
+        }
+    }
+
+    fn debug(self, msg: &str) {
+        if matches!(self, Verbosity::Verbose) {
+            println!("[debug] {msg}");
+        }
+    }
+
+    fn result(self, msg: &str) {
+        if !matches!(self, Verbosity::Quiet) {
+            println!("{msg}");
+        }
+    }
+}
 
 /// Options for image/video transforms passed to converters.
 #[derive(Default)]
@@ -24,7 +65,8 @@ struct ConvertOptions {
     watermark_position: String,
     watermark_opacity: f64,
     watermark_margin: u32,
-    // Video options
+    // Video options (reserved for future use)
+    #[allow(dead_code)]
     quality: Option<String>,
 }
 
@@ -35,6 +77,14 @@ struct Cli {
     /// Memory limit in bytes (e.g., 100000000 for 100MB). Fails fast if exceeded.
     #[arg(long, global = true)]
     memory_limit: Option<usize>,
+
+    /// Verbose output (show debug info)
+    #[arg(short, long, global = true)]
+    verbose: bool,
+
+    /// Quiet output (only errors)
+    #[arg(short, long, global = true)]
+    quiet: bool,
 
     #[command(subcommand)]
     command: Commands,
@@ -59,16 +109,21 @@ enum Commands {
         to: Option<String>,
     },
 
-    /// Convert a file
+    /// Convert file(s)
     Convert {
-        /// Input file
-        input: PathBuf,
-        /// Output file
-        output: PathBuf,
+        /// Input file(s) (use "-" for stdin). Supports multiple files for batch.
+        #[arg(required = true)]
+        input: Vec<String>,
+        /// Output file (use "-" for stdout). For batch, use --output-dir instead.
+        #[arg(short, long)]
+        output: Option<String>,
+        /// Output directory for batch conversions
+        #[arg(long)]
+        output_dir: Option<PathBuf>,
         /// Explicit source format (overrides detection)
         #[arg(long)]
         from: Option<String>,
-        /// Explicit target format (overrides detection)
+        /// Explicit target format (required for batch, optional for single)
         #[arg(long)]
         to: Option<String>,
 
@@ -114,6 +169,16 @@ enum Commands {
         /// Workflow file (YAML, TOML, or JSON)
         workflow: PathBuf,
     },
+
+    /// Generate shell completions
+    Completions {
+        /// Shell to generate completions for
+        #[arg(value_enum)]
+        shell: Shell,
+    },
+
+    /// Generate man page
+    Manpage,
 }
 
 fn main() -> Result<()> {
@@ -135,18 +200,20 @@ fn main() -> Result<()> {
     cambium_audio::register_all(&mut registry);
 
     let memory_limit = cli.memory_limit;
+    let verbosity = Verbosity::from_flags(cli.verbose, cli.quiet);
 
     match cli.command {
-        Commands::List => cmd_list(&registry),
+        Commands::List => cmd_list(&registry, verbosity),
         Commands::Plan {
             input,
             output,
             from,
             to,
-        } => cmd_plan(&registry, &input, output, from, to),
+        } => cmd_plan(&registry, &input, output, from, to, verbosity),
         Commands::Convert {
             input,
             output,
+            output_dir,
             from,
             to,
             max_width,
@@ -161,8 +228,9 @@ fn main() -> Result<()> {
             quality,
         } => cmd_convert(
             &registry,
-            &input,
-            &output,
+            input,
+            output,
+            output_dir,
             from,
             to,
             ConvertOptions {
@@ -178,28 +246,40 @@ fn main() -> Result<()> {
                 quality,
             },
             memory_limit,
+            verbosity,
         ),
-        Commands::Run { workflow } => cmd_run(&registry, &workflow, memory_limit),
+        Commands::Run { workflow } => cmd_run(&registry, &workflow, memory_limit, verbosity),
+        Commands::Completions { shell } => {
+            let mut cmd = Cli::command();
+            generate(shell, &mut cmd, "cambium", &mut std::io::stdout());
+            Ok(())
+        }
+        Commands::Manpage => {
+            let cmd = Cli::command();
+            let man = clap_mangen::Man::new(cmd);
+            man.render(&mut std::io::stdout())?;
+            Ok(())
+        }
     }
 }
 
-fn cmd_list(registry: &Registry) -> Result<()> {
-    println!("Available converters:\n");
+fn cmd_list(registry: &Registry, v: Verbosity) -> Result<()> {
+    v.info("Available converters:\n");
 
     for decl in registry.declarations() {
         let inputs: Vec<_> = decl.inputs.keys().collect();
         let outputs: Vec<_> = decl.outputs.keys().collect();
 
-        println!("  {}", decl.id);
+        v.info(&format!("  {}", decl.id));
         if !decl.description.is_empty() {
-            println!("    {}", decl.description);
+            v.info(&format!("    {}", decl.description));
         }
-        println!("    inputs:  {:?}", inputs);
-        println!("    outputs: {:?}", outputs);
-        println!();
+        v.info(&format!("    inputs:  {:?}", inputs));
+        v.info(&format!("    outputs: {:?}", outputs));
+        v.info("");
     }
 
-    println!("Total: {} converters", registry.len());
+    v.info(&format!("Total: {} converters", registry.len()));
     Ok(())
 }
 
@@ -209,10 +289,11 @@ fn cmd_plan(
     output: Option<String>,
     from: Option<String>,
     to: Option<String>,
+    v: Verbosity,
 ) -> Result<()> {
     // Check if input is a workflow file
     if is_workflow_file(input) {
-        return cmd_plan_workflow(registry, input);
+        return cmd_plan_workflow(registry, input, v);
     }
 
     // Otherwise, plan a simple conversion
@@ -226,8 +307,8 @@ fn cmd_plan(
         .or_else(|| detect_format(&output))
         .context("Could not detect target format. Use --to to specify.")?;
 
-    println!("Planning: {} -> {}", source_format, target_format);
-    println!();
+    v.info(&format!("Planning: {} -> {}", source_format, target_format));
+    v.info("");
 
     let source_props = Properties::new().with("format", source_format.as_str());
     let target_pattern = PropertyPattern::new().eq("format", target_format.as_str());
@@ -243,76 +324,76 @@ fn cmd_plan(
         .context("No conversion path found")?;
 
     if plan.steps.is_empty() {
-        println!("Already at target format (no conversion needed)");
+        v.info("Already at target format (no conversion needed)");
     } else {
-        println!("Steps:");
+        v.info("Steps:");
         for (i, step) in plan.steps.iter().enumerate() {
-            println!(
+            v.info(&format!(
                 "  {}. {} ({} -> {})",
                 i + 1,
                 step.converter_id,
                 step.input_port,
                 step.output_port
-            );
+            ));
         }
-        println!();
-        println!("Total cost: {}", plan.cost);
+        v.info("");
+        v.info(&format!("Total cost: {}", plan.cost));
     }
 
     Ok(())
 }
 
-fn cmd_plan_workflow(registry: &Registry, path: &str) -> Result<()> {
+fn cmd_plan_workflow(registry: &Registry, path: &str, v: Verbosity) -> Result<()> {
     let data = std::fs::read(path).context("Failed to read workflow file")?;
     let workflow = Workflow::from_bytes(&data, Some(path))
         .map_err(|e| anyhow::anyhow!("Failed to parse workflow: {}", e))?;
 
-    println!("Workflow: {}", path);
-    println!();
+    v.info(&format!("Workflow: {}", path));
+    v.info("");
 
     // Show source
     if let Some(ref source) = workflow.source {
-        println!("Source:");
+        v.info("Source:");
         match source {
-            Source::File { path } => println!("  file: {}", path),
-            Source::Glob { glob } => println!("  glob: {}", glob),
-            Source::Properties { properties } => println!("  properties: {:?}", properties),
+            Source::File { path } => v.info(&format!("  file: {}", path)),
+            Source::Glob { glob } => v.info(&format!("  glob: {}", glob)),
+            Source::Properties { properties } => v.info(&format!("  properties: {:?}", properties)),
         }
-        println!();
+        v.info("");
     } else {
-        println!("Source: (not specified)");
-        println!();
+        v.info("Source: (not specified)");
+        v.info("");
     }
 
     // Show sink
     if let Some(ref sink) = workflow.sink {
-        println!("Sink:");
+        v.info("Sink:");
         match sink {
-            Sink::File { path } => println!("  file: {}", path),
-            Sink::Directory { directory } => println!("  directory: {}", directory),
-            Sink::Properties { properties } => println!("  properties: {:?}", properties),
+            Sink::File { path } => v.info(&format!("  file: {}", path)),
+            Sink::Directory { directory } => v.info(&format!("  directory: {}", directory)),
+            Sink::Properties { properties } => v.info(&format!("  properties: {:?}", properties)),
         }
-        println!();
+        v.info("");
     } else {
-        println!("Sink: (not specified)");
-        println!();
+        v.info("Sink: (not specified)");
+        v.info("");
     }
 
     // If steps are explicit, show them
     if !workflow.steps.is_empty() {
-        println!("Explicit steps:");
+        v.info("Explicit steps:");
         for (i, step) in workflow.steps.iter().enumerate() {
-            println!("  {}. {}", i + 1, step.converter);
+            v.info(&format!("  {}. {}", i + 1, step.converter));
             if !step.options.is_empty() {
-                println!("     options: {:?}", step.options);
+                v.info(&format!("     options: {:?}", step.options));
             }
         }
-        println!();
-        println!("Status: Complete workflow (ready to run)");
+        v.info("");
+        v.info("Status: Complete workflow (ready to run)");
     } else if workflow.needs_planning() {
         // Auto-plan
-        println!("Steps: (auto-planning...)");
-        println!();
+        v.info("Steps: (auto-planning...)");
+        v.info("");
 
         let source = workflow.source.as_ref().unwrap();
         let sink = workflow.sink.as_ref().unwrap();
@@ -334,29 +415,29 @@ fn cmd_plan_workflow(registry: &Registry, path: &str) -> Result<()> {
             Cardinality::One,
         ) {
             Some(plan) => {
-                println!("Suggested steps:");
+                v.info("Suggested steps:");
                 for (i, step) in plan.steps.iter().enumerate() {
-                    println!(
+                    v.info(&format!(
                         "  {}. {} ({} -> {})",
                         i + 1,
                         step.converter_id,
                         step.input_port,
                         step.output_port
-                    );
+                    ));
                 }
-                println!();
-                println!("Total cost: {}", plan.cost);
-                println!();
-                println!("Status: Incomplete workflow (add steps or use suggested plan)");
+                v.info("");
+                v.info(&format!("Total cost: {}", plan.cost));
+                v.info("");
+                v.info("Status: Incomplete workflow (add steps or use suggested plan)");
             }
             None => {
-                println!("No conversion path found!");
-                println!();
-                println!("Status: Incomplete workflow (no valid path)");
+                v.info("No conversion path found!");
+                v.info("");
+                v.info("Status: Incomplete workflow (no valid path)");
             }
         }
     } else {
-        println!("Status: Incomplete workflow (missing source or sink)");
+        v.info("Status: Incomplete workflow (missing source or sink)");
     }
 
     Ok(())
@@ -366,6 +447,7 @@ fn cmd_run(
     registry: &Registry,
     workflow_path: &PathBuf,
     memory_limit: Option<usize>,
+    v: Verbosity,
 ) -> Result<()> {
     let data = std::fs::read(workflow_path).context("Failed to read workflow file")?;
     let workflow = Workflow::from_bytes(&data, Some(&workflow_path.to_string_lossy()))
@@ -434,12 +516,16 @@ fn cmd_run(
     let input_data = std::fs::read(&input_path).context("Failed to read input file")?;
     let input_props = source.to_properties();
 
-    println!("Running workflow: {}", workflow_path.display());
-    println!("  {} -> {}", input_path.display(), output_path.display());
-    println!();
+    v.info(&format!("Running workflow: {}", workflow_path.display()));
+    v.info(&format!(
+        "  {} -> {}",
+        input_path.display(),
+        output_path.display()
+    ));
+    v.info("");
 
     for step in &plan.steps {
-        println!("  Running: {}", step.converter_id);
+        v.debug(&format!("  Running: {}", step.converter_id));
     }
 
     // Execute using appropriate executor
@@ -458,13 +544,13 @@ fn cmd_run(
     // Write output
     std::fs::write(&output_path, &result.data).context("Failed to write output file")?;
 
-    println!();
-    println!(
+    v.info("");
+    v.result(&format!(
         "Completed: {} ({} bytes, {:?})",
         output_path.display(),
         result.data.len(),
         result.stats.duration
-    );
+    ));
 
     Ok(())
 }
@@ -480,26 +566,140 @@ fn is_workflow_file(path: &str) -> bool {
     ) && std::path::Path::new(path).exists()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn cmd_convert(
     registry: &Registry,
-    input: &PathBuf,
-    output: &PathBuf,
+    inputs: Vec<String>,
+    output: Option<String>,
+    output_dir: Option<PathBuf>,
     from: Option<String>,
     to: Option<String>,
     opts: ConvertOptions,
     memory_limit: Option<usize>,
+    v: Verbosity,
 ) -> Result<()> {
-    // Detect formats
+    let is_batch = inputs.len() > 1 || output_dir.is_some();
+
+    if is_batch {
+        // Batch mode: require --output-dir and --to
+        let out_dir = output_dir.context("Batch conversion requires --output-dir")?;
+        let target_format = to.context("Batch conversion requires --to")?;
+
+        std::fs::create_dir_all(&out_dir).context("Failed to create output directory")?;
+
+        // Progress bar for batch
+        let pb = if !matches!(v, Verbosity::Quiet) {
+            let pb = ProgressBar::new(inputs.len() as u64);
+            pb.set_style(
+                ProgressStyle::default_bar()
+                    .template("{spinner:.green} [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+                    .unwrap()
+                    .progress_chars("=> "),
+            );
+            Some(pb)
+        } else {
+            None
+        };
+
+        for input in &inputs {
+            let input_path = PathBuf::from(input);
+            let stem = input_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("output");
+            let output_name = format!("{}.{}", stem, target_format);
+            let output_path = out_dir.join(&output_name);
+
+            if let Some(ref pb) = pb {
+                pb.set_message(stem.to_string());
+            }
+
+            convert_single_file(
+                registry,
+                input,
+                &output_path.to_string_lossy(),
+                from.clone(),
+                Some(target_format.clone()),
+                &opts,
+                memory_limit,
+                Verbosity::Quiet, // Suppress per-file output in batch
+            )?;
+
+            if let Some(ref pb) = pb {
+                pb.inc(1);
+            }
+        }
+
+        if let Some(pb) = pb {
+            pb.finish_with_message("done");
+        }
+        v.info(&format!(
+            "Converted {} files to {}",
+            inputs.len(),
+            out_dir.display()
+        ));
+        return Ok(());
+    }
+
+    // Single file mode
+    let input = inputs.into_iter().next().unwrap();
+    let output = output
+        .or_else(|| {
+            // If --to specified, derive output from input
+            to.as_ref().map(|ext| {
+                let p = PathBuf::from(&input);
+                let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("output");
+                format!("{}.{}", stem, ext)
+            })
+        })
+        .context("Output file required. Use -o/--output or --to to specify.")?;
+
+    convert_single_file(registry, &input, &output, from, to, &opts, memory_limit, v)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn convert_single_file(
+    registry: &Registry,
+    input: &str,
+    output: &str,
+    from: Option<String>,
+    to: Option<String>,
+    opts: &ConvertOptions,
+    memory_limit: Option<usize>,
+    v: Verbosity,
+) -> Result<()> {
+    let is_stdin = input == "-";
+    let is_stdout = output == "-";
+
+    // Read input (from stdin or file)
+    let mut current_data = if is_stdin {
+        let mut buf = Vec::new();
+        std::io::stdin()
+            .read_to_end(&mut buf)
+            .context("Failed to read from stdin")?;
+        buf
+    } else {
+        std::fs::read(input).context("Failed to read input file")?
+    };
+
+    // Detect source format: --from flag > magic bytes > extension
     let source_format = from
-        .or_else(|| detect_format(&input.to_string_lossy()))
+        .or_else(|| detect_format_from_magic(&current_data))
+        .or_else(|| if is_stdin { None } else { detect_format(input) })
         .context("Could not detect source format. Use --from to specify.")?;
 
+    // Detect target format: --to flag > extension (no magic for output)
     let target_format = to
-        .or_else(|| detect_format(&output.to_string_lossy()))
+        .or_else(|| {
+            if is_stdout {
+                None
+            } else {
+                detect_format(output)
+            }
+        })
         .context("Could not detect target format. Use --to to specify.")?;
 
-    // Read input
-    let mut current_data = std::fs::read(input).context("Failed to read input file")?;
+    v.debug(&format!("Detected: {} -> {}", source_format, target_format));
     let mut current_props = Properties::new().with("format", source_format.as_str());
 
     // Apply image transforms if any options are set
@@ -681,35 +881,139 @@ fn cmd_convert(
         current_props = result.props;
     }
 
-    // Write output
-    std::fs::write(output, &current_data).context("Failed to write output file")?;
-
-    // Report what was done
-    let has_watermark = opts.watermark.is_some();
-    let transform_info = if needs_resize || needs_crop || has_watermark {
-        let w = current_props
-            .get("width")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        let h = current_props
-            .get("height")
-            .and_then(|v| v.as_i64())
-            .unwrap_or(0);
-        let wm = if has_watermark { " +watermark" } else { "" };
-        format!(" ({}x{}{})", w, h, wm)
+    // Write output (to stdout or file)
+    if is_stdout {
+        std::io::stdout()
+            .write_all(&current_data)
+            .context("Failed to write to stdout")?;
     } else {
-        String::new()
-    };
+        std::fs::write(output, &current_data).context("Failed to write output file")?;
+    }
 
-    println!(
-        "Converted {} -> {}{} ({} bytes)",
-        input.display(),
-        output.display(),
-        transform_info,
-        current_data.len()
-    );
+    // Report what was done (only if not using stdout for data)
+    if !is_stdout {
+        let has_watermark = opts.watermark.is_some();
+        let transform_info = if needs_resize || needs_crop || has_watermark {
+            let w = current_props
+                .get("width")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let h = current_props
+                .get("height")
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0);
+            let wm = if has_watermark { " +watermark" } else { "" };
+            format!(" ({}x{}{})", w, h, wm)
+        } else {
+            String::new()
+        };
+
+        let input_name = if is_stdin { "stdin" } else { input };
+        v.result(&format!(
+            "Converted {} -> {}{} ({} bytes)",
+            input_name,
+            output,
+            transform_info,
+            current_data.len()
+        ));
+    }
 
     Ok(())
+}
+
+/// Detect format from magic bytes (file signature).
+fn detect_format_from_magic(data: &[u8]) -> Option<String> {
+    if data.len() < 12 {
+        return None;
+    }
+
+    // Image formats
+    if data.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Some("png".into());
+    }
+    if data.starts_with(b"\xff\xd8\xff") {
+        return Some("jpg".into());
+    }
+    if data.starts_with(b"RIFF") && &data[8..12] == b"WEBP" {
+        return Some("webp".into());
+    }
+    if data.starts_with(b"GIF87a") || data.starts_with(b"GIF89a") {
+        return Some("gif".into());
+    }
+    if data.starts_with(b"BM") {
+        return Some("bmp".into());
+    }
+    if data.starts_with(b"\x00\x00\x01\x00") {
+        return Some("ico".into());
+    }
+    if data.starts_with(b"II\x2a\x00") || data.starts_with(b"MM\x00\x2a") {
+        return Some("tiff".into());
+    }
+    if data.starts_with(b"qoif") {
+        return Some("qoi".into());
+    }
+    if data.len() >= 12
+        && &data[4..8] == b"ftyp"
+        && (&data[8..12] == b"avif" || &data[8..12] == b"avis")
+    {
+        return Some("avif".into());
+    }
+    if data.starts_with(b"\x76\x2f\x31\x01") {
+        return Some("exr".into());
+    }
+    if data.starts_with(b"#?RADIANCE") || data.starts_with(b"#?RGBE") {
+        return Some("hdr".into());
+    }
+
+    // Audio formats
+    if data.starts_with(b"RIFF") && data.len() >= 12 && &data[8..12] == b"WAVE" {
+        return Some("wav".into());
+    }
+    if data.starts_with(b"fLaC") {
+        return Some("flac".into());
+    }
+    if data.starts_with(b"\xff\xfb") || data.starts_with(b"\xff\xfa") || data.starts_with(b"ID3") {
+        return Some("mp3".into());
+    }
+    if data.starts_with(b"OggS") {
+        // Could be ogg vorbis, opus, or video - assume audio
+        return Some("ogg".into());
+    }
+
+    // Video formats
+    if data.len() >= 12 && &data[4..8] == b"ftyp" {
+        let brand = &data[8..12];
+        if brand == b"isom"
+            || brand == b"mp41"
+            || brand == b"mp42"
+            || brand == b"M4V "
+            || brand == b"M4A "
+            || brand == b"qt  "
+        {
+            return Some("mp4".into());
+        }
+    }
+    if data.starts_with(b"\x1a\x45\xdf\xa3") {
+        // Could be mkv or webm - check for more specific markers
+        return Some("mkv".into());
+    }
+    if data.starts_with(b"RIFF") && data.len() >= 12 && &data[8..12] == b"AVI " {
+        return Some("avi".into());
+    }
+
+    // Serde binary formats
+    // MessagePack: 0x80-0x8f (fixmap), 0x90-0x9f (fixarray), 0xa0-0xbf (fixstr)
+    // Hard to reliably detect without more context - skip
+
+    // Text formats (check for common patterns)
+    if data.starts_with(b"{") || data.starts_with(b"[") {
+        return Some("json".into());
+    }
+    if data.starts_with(b"<?xml") || data.starts_with(b"<") {
+        return Some("xml".into());
+    }
+
+    None
 }
 
 /// Detect format from file extension.

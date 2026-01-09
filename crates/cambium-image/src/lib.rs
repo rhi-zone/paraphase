@@ -182,7 +182,7 @@ pub enum Gravity {
 
 impl Gravity {
     /// Parse gravity from string.
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().replace(['-', '_'], "").as_str() {
             "topleft" | "nw" | "northwest" => Some(Gravity::TopLeft),
             "top" | "n" | "north" => Some(Gravity::Top),
@@ -428,7 +428,7 @@ impl Converter for CropAspectConverter {
         let gravity = props
             .get("gravity")
             .and_then(|v| v.as_str())
-            .and_then(Gravity::from_str)
+            .and_then(Gravity::parse)
             .unwrap_or_default();
 
         // Compute crop region
@@ -625,7 +625,7 @@ impl Converter for WatermarkConverter {
         let position = props
             .get("position")
             .and_then(|v| v.as_str())
-            .and_then(Gravity::from_str)
+            .and_then(Gravity::parse)
             .unwrap_or(Gravity::BottomRight);
 
         let opacity = props
@@ -998,17 +998,14 @@ mod tests {
 
     #[test]
     fn test_gravity_parsing() {
-        assert_eq!(Gravity::from_str("center"), Some(Gravity::Center));
-        assert_eq!(Gravity::from_str("top-left"), Some(Gravity::TopLeft));
-        assert_eq!(Gravity::from_str("top_left"), Some(Gravity::TopLeft));
-        assert_eq!(Gravity::from_str("nw"), Some(Gravity::TopLeft));
-        assert_eq!(Gravity::from_str("northwest"), Some(Gravity::TopLeft));
-        assert_eq!(
-            Gravity::from_str("bottom-right"),
-            Some(Gravity::BottomRight)
-        );
-        assert_eq!(Gravity::from_str("se"), Some(Gravity::BottomRight));
-        assert_eq!(Gravity::from_str("invalid"), None);
+        assert_eq!(Gravity::parse("center"), Some(Gravity::Center));
+        assert_eq!(Gravity::parse("top-left"), Some(Gravity::TopLeft));
+        assert_eq!(Gravity::parse("top_left"), Some(Gravity::TopLeft));
+        assert_eq!(Gravity::parse("nw"), Some(Gravity::TopLeft));
+        assert_eq!(Gravity::parse("northwest"), Some(Gravity::TopLeft));
+        assert_eq!(Gravity::parse("bottom-right"), Some(Gravity::BottomRight));
+        assert_eq!(Gravity::parse("se"), Some(Gravity::BottomRight));
+        assert_eq!(Gravity::parse("invalid"), None);
     }
 
     #[test]

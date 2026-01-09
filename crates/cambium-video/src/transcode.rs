@@ -194,20 +194,20 @@ fn calculate_dimensions(
     }
 
     // Then apply max constraints
-    if let Some(max_w) = max_width {
-        if width > max_w {
-            let ratio = max_w as f64 / width as f64;
-            width = max_w;
-            height = ((height as f64) * ratio).round() as u32;
-        }
+    if let Some(max_w) = max_width
+        && width > max_w
+    {
+        let ratio = max_w as f64 / width as f64;
+        width = max_w;
+        height = ((height as f64) * ratio).round() as u32;
     }
 
-    if let Some(max_h) = max_height {
-        if height > max_h {
-            let ratio = max_h as f64 / height as f64;
-            height = max_h;
-            width = ((width as f64) * ratio).round() as u32;
-        }
+    if let Some(max_h) = max_height
+        && height > max_h
+    {
+        let ratio = max_h as f64 / height as f64;
+        height = max_h;
+        width = ((width as f64) * ratio).round() as u32;
     }
 
     // Ensure dimensions are even (required by most codecs)

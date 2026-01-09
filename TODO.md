@@ -47,8 +47,36 @@ Implemented:
 Future work:
 - [ ] **StreamingExecutor** - chunk-based I/O for huge files (requires converter interface changes)
 
-## General
+## CLI Usability
 
-- [ ] Batch processing in CLI (`cambium convert *.mp3 --to wav`)
-- [ ] Streaming/pipe support for large files
-- [ ] Progress reporting for long conversions
+Implemented:
+- [x] **Shell completions** - `cambium completions bash/zsh/fish`
+- [x] **Man pages** - `cambium manpage > cambium.1`
+- [x] **Verbose/quiet modes** - `-v` for debug info, `-q` for silent
+- [x] **Better format detection** - magic bytes before extension fallback
+- [x] **Stdin/stdout piping** - `cat file.mp3 | cambium convert - -o - --from mp3 --to wav`
+- [x] **Batch processing** - `cambium convert *.mp3 --output-dir out/ --to wav`
+- [x] **Progress reporting** - progress bars for batch conversions
+
+Future work:
+- [ ] **Presets** - `--preset web` for common conversion profiles
+- [ ] **Config file** - `~/.config/cambium/config.toml` for defaults
+- [ ] **Better error messages** - actionable suggestions, format hints
+
+## Testing & Quality
+
+Implemented:
+- [x] **Integration tests** - 9 end-to-end CLI tests
+- [x] **CI/CD** - GitHub Actions for check/test/fmt/clippy/doc/build
+
+Future work:
+- [ ] **Benchmarks** - criterion benchmarks for regression tracking
+
+## Distribution
+
+Implemented:
+- [x] **Man pages** - via `cambium manpage` command
+
+Future work:
+- [ ] **Packaging** - cargo-dist, Homebrew formula, AUR package
+- [ ] **Release binaries** - pre-built for Linux/macOS/Windows
