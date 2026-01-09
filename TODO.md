@@ -1,5 +1,18 @@
 # Cambium TODO
 
+## Document Conversion (cambium-document)
+
+New crate for document → PDF normalization:
+
+- [ ] **Design ADR** - intermediate representation, format support
+- [ ] **Pure Rust core** - TXT, images → PDF via `printpdf`/`genpdf`
+- [ ] **Markdown → PDF** - via Typst (pure Rust) or Pandoc
+- [ ] **HTML → PDF** - Typst, or external (wkhtmltopdf/WeasyPrint)
+- [ ] **Office formats** - LibreOffice headless (DOCX, XLSX, ODT, etc.)
+- [ ] **PDF as input** - extract text, images via `pdf-extract`/`lopdf`
+
+Typst is promising for pure Rust PDF generation with proper layout.
+
 ## Audio Encoders (cambium-audio)
 
 Currently only WAV encoding is supported. Adding encoders for other formats:
