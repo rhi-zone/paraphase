@@ -9,14 +9,14 @@
 
 ### Simple (pure Rust, self-contained)
 
-- [ ] **Compression** - gzip (`flate2`), zstd, brotli, xz (`xz2`); wrap/unwrap bytes
-- [ ] **INI/dotenv config** - `rust-ini`, `dotenvy`; simple key-value formats
-- [ ] **Character encoding** - `encoding_rs`; UTF-16, Latin-1, Shift-JIS, etc.
+- [x] **Compression** - gzip (`flate2`), zstd, brotli; wrap/unwrap bytes
+- [x] **INI config** - `rust-ini`; simple key-value config files
+- [x] **Character encoding** - `encoding_rs`; UTF-16, Latin-1, Shift-JIS, etc.
 
 ### Medium (pure Rust, more logic)
 
-- [ ] **Markdown → HTML** - `pulldown-cmark`; CommonMark compliant
-- [ ] **HTML → text** - `html2text` or `scraper`; strip tags, preserve structure
+- [x] **Markdown → HTML** - `pulldown-cmark`; CommonMark compliant
+- [x] **HTML → text** - `html2text`; strip tags, preserve structure
 - [ ] **Archives** - `tar`, `zip` crates; extract/create, maps to Multi output
 
 ### Complex (schema-based or native deps)

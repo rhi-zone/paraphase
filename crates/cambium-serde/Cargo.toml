@@ -90,6 +90,39 @@ base64 = ["dep:base64"]
 # Hex - Hexadecimal encoding
 hex = ["dep:hex"]
 
+# ============================================
+# COMPRESSION FORMATS
+# ============================================
+
+# Gzip - Standard gzip compression
+gzip = ["dep:flate2"]
+
+# Zstd - Fast compression with good ratios
+zstd = ["dep:zstd"]
+
+# Brotli - Web-optimized compression
+brotli = ["dep:brotli"]
+
+# ============================================
+# CONFIG FORMATS
+# ============================================
+
+# INI - Simple key-value config files
+ini = ["dep:rust-ini"]
+
+# ============================================
+# TEXT TRANSFORMS
+# ============================================
+
+# Character encoding conversion (UTF-16, Latin-1, Shift-JIS, etc.)
+charsets = ["dep:encoding_rs"]
+
+# Markdown to HTML
+markdown = ["dep:pulldown-cmark"]
+
+# HTML to plain text
+html2text = ["dep:html2text"]
+
 # All formats
 all = [
     "json", "yaml", "toml", "ron", "json5", "xml", "lexpr",
@@ -97,6 +130,8 @@ all = [
     "msgpack", "cbor", "bincode", "postcard", "bson",
     "flexbuffers", "bencode", "pickle", "plist",
     "base64", "hex",
+    "gzip", "zstd", "brotli",
+    "ini", "charsets", "markdown", "html2text",
 ]
 
 [dependencies]
@@ -129,3 +164,16 @@ plist = { version = "1.7", optional = true }
 # --- Encoding formats ---
 base64 = { version = "0.22", optional = true }
 hex = { version = "0.4", optional = true }
+
+# --- Compression ---
+flate2 = { version = "1.1", optional = true }
+zstd = { version = "0.13", optional = true }
+brotli = { version = "7.0", optional = true }
+
+# --- Config formats ---
+rust-ini = { version = "0.21", optional = true }
+
+# --- Text transforms ---
+encoding_rs = { version = "0.8", optional = true }
+pulldown-cmark = { version = "0.12", optional = true }
+html2text = { version = "0.14", optional = true }

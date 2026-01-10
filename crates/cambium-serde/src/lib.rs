@@ -35,6 +35,19 @@
 //! ## Line-based formats
 //! - `ndjson` - Newline-delimited JSON (JSON Lines)
 //!
+//! ## Compression formats
+//! - `gzip` - Gzip compression/decompression
+//! - `zstd` - Zstandard compression/decompression
+//! - `brotli` - Brotli compression/decompression
+//!
+//! ## Config formats
+//! - `ini` - INI file format (bidirectional with JSON)
+//!
+//! ## Text transforms
+//! - `charsets` - Character encoding conversion (UTF-16, Latin-1, etc.)
+//! - `markdown` - Markdown to HTML conversion
+//! - `html2text` - HTML to plain text conversion
+//!
 //! ## Feature group
 //! - `all` - All formats
 
@@ -72,6 +85,47 @@ pub fn register_all(registry: &mut Registry) {
     {
         registry.register(JsonToNdjson);
         registry.register(NdjsonToJson);
+    }
+
+    // Register compression converters
+    #[cfg(feature = "gzip")]
+    {
+        registry.register(GzipCompress);
+        registry.register(GzipDecompress);
+    }
+    #[cfg(feature = "zstd")]
+    {
+        registry.register(ZstdCompress);
+        registry.register(ZstdDecompress);
+    }
+    #[cfg(feature = "brotli")]
+    {
+        registry.register(BrotliCompress);
+        registry.register(BrotliDecompress);
+    }
+
+    // Register config format converters
+    #[cfg(feature = "ini")]
+    {
+        registry.register(IniToJson);
+        registry.register(JsonToIni);
+    }
+
+    // Register charset converters
+    #[cfg(feature = "charsets")]
+    {
+        registry.register(CharsetToUtf8);
+        registry.register(Utf8ToCharset);
+    }
+
+    // Register text transform converters
+    #[cfg(feature = "markdown")]
+    {
+        registry.register(MarkdownToHtml);
+    }
+    #[cfg(feature = "html2text")]
+    {
+        registry.register(HtmlToText);
     }
 }
 
@@ -396,6 +450,498 @@ mod ndjson_impl {
 #[cfg(feature = "ndjson")]
 pub use ndjson_impl::{JsonToNdjson, NdjsonToJson};
 
+// ============================================
+// Compression (gzip, zstd, brotli)
+// ============================================
+
+#[cfg(feature = "gzip")]
+mod gzip_impl {
+    use super::*;
+    use flate2::Compression;
+    use flate2::read::{GzDecoder, GzEncoder};
+    use std::io::Read;
+
+    /// Compress raw bytes with gzip.
+    pub struct GzipCompress;
+
+    impl Converter for GzipCompress {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "compression.raw-to-gzip",
+                    PropertyPattern::new().eq("format", "raw"),
+                    PropertyPattern::new().eq("format", "gzip"),
+                )
+                .description("Compress with gzip")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let mut encoder = GzEncoder::new(input, Compression::default());
+            let mut output = Vec::new();
+            encoder
+                .read_to_end(&mut output)
+                .map_err(|e| ConvertError::Failed(format!("Gzip compression failed: {}", e)))?;
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "gzip".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+
+    /// Decompress gzip bytes.
+    pub struct GzipDecompress;
+
+    impl Converter for GzipDecompress {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "compression.gzip-to-raw",
+                    PropertyPattern::new().eq("format", "gzip"),
+                    PropertyPattern::new().eq("format", "raw"),
+                )
+                .description("Decompress gzip")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let mut decoder = GzDecoder::new(input);
+            let mut output = Vec::new();
+            decoder.read_to_end(&mut output).map_err(|e| {
+                ConvertError::InvalidInput(format!("Gzip decompression failed: {}", e))
+            })?;
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "raw".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+}
+
+#[cfg(feature = "gzip")]
+pub use gzip_impl::{GzipCompress, GzipDecompress};
+
+#[cfg(feature = "zstd")]
+mod zstd_impl {
+    use super::*;
+
+    /// Compress raw bytes with zstd.
+    pub struct ZstdCompress;
+
+    impl Converter for ZstdCompress {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "compression.raw-to-zstd",
+                    PropertyPattern::new().eq("format", "raw"),
+                    PropertyPattern::new().eq("format", "zstd"),
+                )
+                .description("Compress with zstd")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let output = zstd::encode_all(input, 0)
+                .map_err(|e| ConvertError::Failed(format!("Zstd compression failed: {}", e)))?;
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "zstd".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+
+    /// Decompress zstd bytes.
+    pub struct ZstdDecompress;
+
+    impl Converter for ZstdDecompress {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "compression.zstd-to-raw",
+                    PropertyPattern::new().eq("format", "zstd"),
+                    PropertyPattern::new().eq("format", "raw"),
+                )
+                .description("Decompress zstd")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let output = zstd::decode_all(input).map_err(|e| {
+                ConvertError::InvalidInput(format!("Zstd decompression failed: {}", e))
+            })?;
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "raw".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+}
+
+#[cfg(feature = "zstd")]
+pub use zstd_impl::{ZstdCompress, ZstdDecompress};
+
+#[cfg(feature = "brotli")]
+mod brotli_impl {
+    use super::*;
+    use std::io::Read;
+
+    /// Compress raw bytes with brotli.
+    pub struct BrotliCompress;
+
+    impl Converter for BrotliCompress {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "compression.raw-to-brotli",
+                    PropertyPattern::new().eq("format", "raw"),
+                    PropertyPattern::new().eq("format", "brotli"),
+                )
+                .description("Compress with brotli")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let mut output = Vec::new();
+            let mut compressor = brotli::CompressorReader::new(input, 4096, 6, 22);
+            compressor
+                .read_to_end(&mut output)
+                .map_err(|e| ConvertError::Failed(format!("Brotli compression failed: {}", e)))?;
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "brotli".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+
+    /// Decompress brotli bytes.
+    pub struct BrotliDecompress;
+
+    impl Converter for BrotliDecompress {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "compression.brotli-to-raw",
+                    PropertyPattern::new().eq("format", "brotli"),
+                    PropertyPattern::new().eq("format", "raw"),
+                )
+                .description("Decompress brotli")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let mut output = Vec::new();
+            let mut decompressor = brotli::Decompressor::new(input, 4096);
+            decompressor.read_to_end(&mut output).map_err(|e| {
+                ConvertError::InvalidInput(format!("Brotli decompression failed: {}", e))
+            })?;
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "raw".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+}
+
+#[cfg(feature = "brotli")]
+pub use brotli_impl::{BrotliCompress, BrotliDecompress};
+
+// ============================================
+// INI config format
+// ============================================
+
+#[cfg(feature = "ini")]
+mod ini_impl {
+    use super::*;
+    use ini::Ini;
+
+    /// Convert INI to JSON.
+    pub struct IniToJson;
+
+    impl Converter for IniToJson {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "config.ini-to-json",
+                    PropertyPattern::new().eq("format", "ini"),
+                    PropertyPattern::new().eq("format", "json"),
+                )
+                .description("Convert INI to JSON")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let text = std::str::from_utf8(input)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid UTF-8: {}", e)))?;
+            let ini = Ini::load_from_str(text)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid INI: {}", e)))?;
+
+            // Convert to JSON object
+            let mut root = serde_json::Map::new();
+            for (section, properties) in ini.iter() {
+                let section_name = section.unwrap_or("_global");
+                let mut section_obj = serde_json::Map::new();
+                for (key, value) in properties.iter() {
+                    section_obj.insert(
+                        key.to_string(),
+                        serde_json::Value::String(value.to_string()),
+                    );
+                }
+                root.insert(
+                    section_name.to_string(),
+                    serde_json::Value::Object(section_obj),
+                );
+            }
+
+            let output = serde_json::to_vec_pretty(&root)
+                .map_err(|e| ConvertError::Failed(format!("JSON serialization failed: {}", e)))?;
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "json".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+
+    /// Convert JSON to INI.
+    pub struct JsonToIni;
+
+    impl Converter for JsonToIni {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "config.json-to-ini",
+                    PropertyPattern::new().eq("format", "json"),
+                    PropertyPattern::new().eq("format", "ini"),
+                )
+                .description("Convert JSON to INI")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let value: serde_json::Value = serde_json::from_slice(input)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid JSON: {}", e)))?;
+
+            let obj = value
+                .as_object()
+                .ok_or_else(|| ConvertError::InvalidInput("JSON must be an object".into()))?;
+
+            let mut ini = Ini::new();
+            for (section, section_value) in obj {
+                let section_name = if section == "_global" {
+                    None
+                } else {
+                    Some(section.as_str())
+                };
+                if let Some(section_obj) = section_value.as_object() {
+                    for (key, val) in section_obj {
+                        let str_val = match val {
+                            serde_json::Value::String(s) => s.clone(),
+                            other => other.to_string(),
+                        };
+                        ini.with_section(section_name).set(key, str_val);
+                    }
+                }
+            }
+
+            let mut output = Vec::new();
+            ini.write_to(&mut output)
+                .map_err(|e| ConvertError::Failed(format!("INI serialization failed: {}", e)))?;
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "ini".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+}
+
+#[cfg(feature = "ini")]
+pub use ini_impl::{IniToJson, JsonToIni};
+
+// ============================================
+// Character encoding conversion
+// ============================================
+
+#[cfg(feature = "charsets")]
+mod charsets_impl {
+    use super::*;
+
+    /// Convert from a character encoding to UTF-8.
+    pub struct CharsetToUtf8;
+
+    impl Converter for CharsetToUtf8 {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "encoding.charset-to-utf8",
+                    PropertyPattern::new().exists("charset"),
+                    PropertyPattern::new().eq("charset", "utf-8"),
+                )
+                .description("Convert character encoding to UTF-8")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let charset = props
+                .get("charset")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| ConvertError::InvalidInput("Missing 'charset' property".into()))?;
+
+            let encoding =
+                encoding_rs::Encoding::for_label(charset.as_bytes()).ok_or_else(|| {
+                    ConvertError::InvalidInput(format!("Unknown charset: {}", charset))
+                })?;
+
+            let (decoded, _, had_errors) = encoding.decode(input);
+            if had_errors {
+                return Err(ConvertError::InvalidInput(format!(
+                    "Invalid {} sequence in input",
+                    charset
+                )));
+            }
+
+            let mut out_props = props.clone();
+            out_props.insert("charset".into(), "utf-8".into());
+            Ok(ConvertOutput::Single(
+                decoded.into_owned().into_bytes(),
+                out_props,
+            ))
+        }
+    }
+
+    /// Convert from UTF-8 to another character encoding.
+    pub struct Utf8ToCharset;
+
+    impl Converter for Utf8ToCharset {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "encoding.utf8-to-charset",
+                    PropertyPattern::new().eq("charset", "utf-8"),
+                    PropertyPattern::new().exists("target_charset"),
+                )
+                .description("Convert UTF-8 to another character encoding")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let target = props
+                .get("target_charset")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| {
+                    ConvertError::InvalidInput("Missing 'target_charset' property".into())
+                })?;
+
+            let text = std::str::from_utf8(input)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid UTF-8: {}", e)))?;
+
+            let encoding =
+                encoding_rs::Encoding::for_label(target.as_bytes()).ok_or_else(|| {
+                    ConvertError::InvalidInput(format!("Unknown charset: {}", target))
+                })?;
+
+            let (encoded, _, had_errors) = encoding.encode(text);
+            if had_errors {
+                return Err(ConvertError::Failed(format!(
+                    "Cannot encode to {}: input contains unmappable characters",
+                    target
+                )));
+            }
+
+            let mut out_props = props.clone();
+            out_props.insert("charset".into(), target.into());
+            out_props.shift_remove("target_charset");
+            Ok(ConvertOutput::Single(encoded.into_owned(), out_props))
+        }
+    }
+}
+
+#[cfg(feature = "charsets")]
+pub use charsets_impl::{CharsetToUtf8, Utf8ToCharset};
+
+// ============================================
+// Markdown → HTML
+// ============================================
+
+#[cfg(feature = "markdown")]
+mod markdown_impl {
+    use super::*;
+    use pulldown_cmark::{Parser, html};
+
+    /// Convert Markdown to HTML.
+    pub struct MarkdownToHtml;
+
+    impl Converter for MarkdownToHtml {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "text.markdown-to-html",
+                    PropertyPattern::new().eq("format", "markdown"),
+                    PropertyPattern::new().eq("format", "html"),
+                )
+                .description("Convert Markdown to HTML")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let text = std::str::from_utf8(input)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid UTF-8: {}", e)))?;
+
+            let parser = Parser::new(text);
+            let mut html_output = String::new();
+            html::push_html(&mut html_output, parser);
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "html".into());
+            Ok(ConvertOutput::Single(html_output.into_bytes(), out_props))
+        }
+    }
+}
+
+#[cfg(feature = "markdown")]
+pub use markdown_impl::MarkdownToHtml;
+
+// ============================================
+// HTML → Plain text
+// ============================================
+
+#[cfg(feature = "html2text")]
+mod html2text_impl {
+    use super::*;
+
+    /// Convert HTML to plain text.
+    pub struct HtmlToText;
+
+    impl Converter for HtmlToText {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "text.html-to-text",
+                    PropertyPattern::new().eq("format", "html"),
+                    PropertyPattern::new().eq("format", "text"),
+                )
+                .description("Convert HTML to plain text")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let text = html2text::from_read(input, 80)
+                .map_err(|e| ConvertError::InvalidInput(format!("HTML parsing failed: {}", e)))?;
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "text".into());
+            Ok(ConvertOutput::Single(text.into_bytes(), out_props))
+        }
+    }
+}
+
+#[cfg(feature = "html2text")]
+pub use html2text_impl::HtmlToText;
+
 /// Deserialize bytes to a serde Value.
 fn deserialize(format: &str, data: &[u8]) -> Result<serde_json::Value, ConvertError> {
     match format {
@@ -702,6 +1248,42 @@ mod tests {
             expected += 2;
         }
 
+        // Plus compression converters
+        #[cfg(feature = "gzip")]
+        {
+            expected += 2;
+        }
+        #[cfg(feature = "zstd")]
+        {
+            expected += 2;
+        }
+        #[cfg(feature = "brotli")]
+        {
+            expected += 2;
+        }
+
+        // Plus config format converters
+        #[cfg(feature = "ini")]
+        {
+            expected += 2;
+        }
+
+        // Plus charset converters
+        #[cfg(feature = "charsets")]
+        {
+            expected += 2;
+        }
+
+        // Plus text transform converters
+        #[cfg(feature = "markdown")]
+        {
+            expected += 1;
+        }
+        #[cfg(feature = "html2text")]
+        {
+            expected += 1;
+        }
+
         assert_eq!(registry.len(), expected);
     }
 
@@ -850,5 +1432,123 @@ mod tests {
         let original_value: serde_json::Value = serde_json::from_slice(original).unwrap();
         let roundtrip_value: serde_json::Value = serde_json::from_slice(&json_bytes).unwrap();
         assert_eq!(original_value, roundtrip_value);
+    }
+
+    #[test]
+    #[cfg(feature = "gzip")]
+    fn test_gzip_roundtrip() {
+        use crate::{GzipCompress, GzipDecompress};
+
+        let original = b"Hello, World! This is test data. ".repeat(100);
+        let props = Properties::new().with("format", "raw");
+
+        // Compress
+        let compressed = GzipCompress.convert(&original, &props).unwrap();
+        let (compressed_bytes, compressed_props) = match compressed {
+            ConvertOutput::Single(b, p) => (b, p),
+            _ => panic!("Expected single"),
+        };
+        assert_eq!(
+            compressed_props.get("format").unwrap().as_str(),
+            Some("gzip")
+        );
+        assert!(compressed_bytes.len() < original.len()); // Should be smaller for repeated data
+
+        // Decompress
+        let decompressed = GzipDecompress
+            .convert(&compressed_bytes, &compressed_props)
+            .unwrap();
+        let (decompressed_bytes, _) = match decompressed {
+            ConvertOutput::Single(b, p) => (b, p),
+            _ => panic!("Expected single"),
+        };
+        assert_eq!(decompressed_bytes, original);
+    }
+
+    #[test]
+    #[cfg(feature = "zstd")]
+    fn test_zstd_roundtrip() {
+        use crate::{ZstdCompress, ZstdDecompress};
+
+        let original = b"Hello, World! This is some test data that should compress well.";
+        let props = Properties::new().with("format", "raw");
+
+        // Compress
+        let compressed = ZstdCompress.convert(original, &props).unwrap();
+        let (compressed_bytes, _) = match compressed {
+            ConvertOutput::Single(b, p) => (b, p),
+            _ => panic!("Expected single"),
+        };
+
+        // Decompress
+        let decompressed = ZstdDecompress
+            .convert(&compressed_bytes, &Properties::new())
+            .unwrap();
+        let (decompressed_bytes, _) = match decompressed {
+            ConvertOutput::Single(b, p) => (b, p),
+            _ => panic!("Expected single"),
+        };
+        assert_eq!(decompressed_bytes, original);
+    }
+
+    #[test]
+    #[cfg(feature = "ini")]
+    fn test_ini_to_json() {
+        use crate::IniToJson;
+
+        let input = b"[section]\nkey=value\nnum=42\n";
+        let props = Properties::new().with("format", "ini");
+
+        let result = IniToJson.convert(input, &props).unwrap();
+        let (output, out_props) = match result {
+            ConvertOutput::Single(b, p) => (b, p),
+            _ => panic!("Expected single"),
+        };
+
+        let value: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(out_props.get("format").unwrap().as_str(), Some("json"));
+        assert_eq!(value["section"]["key"], "value");
+        assert_eq!(value["section"]["num"], "42");
+    }
+
+    #[test]
+    #[cfg(feature = "markdown")]
+    fn test_markdown_to_html() {
+        use crate::MarkdownToHtml;
+
+        let input = b"# Hello\n\nThis is **bold** text.";
+        let props = Properties::new().with("format", "markdown");
+
+        let result = MarkdownToHtml.convert(input, &props).unwrap();
+        let (output, out_props) = match result {
+            ConvertOutput::Single(b, p) => (b, p),
+            _ => panic!("Expected single"),
+        };
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(out_props.get("format").unwrap().as_str(), Some("html"));
+        assert!(output_str.contains("<h1>Hello</h1>"));
+        assert!(output_str.contains("<strong>bold</strong>"));
+    }
+
+    #[test]
+    #[cfg(feature = "html2text")]
+    fn test_html_to_text() {
+        use crate::HtmlToText;
+
+        let input = b"<html><body><h1>Title</h1><p>Hello, <b>World</b>!</p></body></html>";
+        let props = Properties::new().with("format", "html");
+
+        let result = HtmlToText.convert(input, &props).unwrap();
+        let (output, out_props) = match result {
+            ConvertOutput::Single(b, p) => (b, p),
+            _ => panic!("Expected single"),
+        };
+
+        let output_str = String::from_utf8(output).unwrap();
+        assert_eq!(out_props.get("format").unwrap().as_str(), Some("text"));
+        assert!(output_str.contains("Title"));
+        assert!(output_str.contains("Hello"));
+        assert!(output_str.contains("World"));
     }
 }
