@@ -22,6 +22,16 @@
         '';
       in
       {
+        packages.default = pkgs.rustPlatform.buildRustPackage {
+          pname = "cambium";
+          version = "0.1.0";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          nativeBuildInputs = with pkgs; [ pkg-config llvmPackages.libclang ];
+          buildInputs = with pkgs; [ ffmpeg ];
+          LIBCLANG_PATH = "${pkgs.llvmPackages.libclang.lib}/lib";
+        };
+
         devShells.default = pkgs.mkShell rec {
           buildInputs = with pkgs; [
             stdenv.cc.cc
