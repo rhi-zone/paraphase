@@ -5,7 +5,7 @@ use ffmpeg_next as ffmpeg;
 use ffmpeg_next::format::Pixel;
 use ffmpeg_next::software::scaling::{context::Context as ScalingContext, flag::Flags};
 use ffmpeg_next::util::frame::video::Video as VideoFrame;
-use rhi_paraphase_core::ConvertError;
+use paraphase_core::ConvertError;
 use std::collections::HashMap;
 
 /// Transcode video from one format to another

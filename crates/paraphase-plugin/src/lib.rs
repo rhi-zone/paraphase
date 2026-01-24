@@ -3,7 +3,7 @@
 //! This crate provides utilities for writing Cambium plugins,
 //! including the C ABI exports and procedural macros.
 
-pub use rhi_paraphase_core::{
+pub use paraphase_core::{
     ConvertError, ConvertOutput, Converter, ConverterDecl, PortDecl, Predicate, Properties,
     PropertiesExt, PropertyPattern, Value,
 };

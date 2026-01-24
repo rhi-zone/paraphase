@@ -1,5 +1,5 @@
 [package]
-name = "rhi-paraphase-plugin"
+name = "paraphase-plugin"
 description = "Plugin authoring helpers for Paraphase"
 version.workspace = true
 edition.workspace = true
@@ -7,4 +7,4 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-rhi-paraphase-core.workspace = true
+paraphase-core.workspace = true

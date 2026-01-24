@@ -1,5 +1,5 @@
 [package]
-name = "rhi-paraphase-core"
+name = "paraphase-core"
 description = "Type-driven data transformation pipeline"
 version.workspace = true
 edition.workspace = true

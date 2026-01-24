@@ -4,7 +4,7 @@
 //! Currently supports decoding from many formats but encoding only to WAV.
 
 use hound::{WavSpec, WavWriter};
-use rhi_paraphase_core::{
+use paraphase_core::{
     ConvertError, ConvertOutput, Converter, ConverterDecl, Properties, PropertyPattern, Registry,
 };
 use std::io::Cursor;

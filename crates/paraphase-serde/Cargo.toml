@@ -1,5 +1,5 @@
 [package]
-name = "rhi-paraphase-serde"
+name = "paraphase-serde"
 description = "Serde-based format converters for Paraphase"
 version.workspace = true
 edition.workspace = true
@@ -166,7 +166,7 @@ all = [
 ]
 
 [dependencies]
-rhi-paraphase-core.workspace = true
+paraphase-core.workspace = true
 serde.workspace = true
 
 # --- Text formats ---

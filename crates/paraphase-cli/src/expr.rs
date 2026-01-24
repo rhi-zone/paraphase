@@ -5,7 +5,7 @@
 //! This module provides the integration between Cambium's property system
 //! and Dew's expression language, enabling dynamic preset values.
 
-use rhi_paraphase_core::Properties;
+use paraphase_core::Properties;
 use rhizome_dew_core::Expr;
 use rhizome_dew_scalar::{FunctionRegistry, eval, scalar_registry};
 use std::collections::HashMap;
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn test_props_to_vars() {
-        use rhi_paraphase_core::PropertiesExt;
+        use paraphase_core::PropertiesExt;
 
         let props = Properties::new()
             .with("width", 1920i64)

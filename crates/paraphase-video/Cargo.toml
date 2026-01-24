@@ -1,5 +1,5 @@
 [package]
-name = "rhi-paraphase-video"
+name = "paraphase-video"
 description = "Video format converters for Paraphase"
 version.workspace = true
 edition.workspace = true
@@ -26,6 +26,6 @@ audio = []
 all = ["mp4", "webm", "mkv", "avi", "mov", "gif", "audio"]
 
 [dependencies]
-rhi-paraphase-core.workspace = true
+paraphase-core.workspace = true
 indexmap = "2"
 ffmpeg-next = "8"
