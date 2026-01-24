@@ -1,5 +1,5 @@
 [package]
-name = "rhi-paraphase-audio"
+name = "paraphase-audio"
 description = "Audio format converters for Paraphase (pure Rust)"
 version.workspace = true
 edition.workspace = true
@@ -20,7 +20,7 @@ aac = ["symphonia/aac", "symphonia/isomp4"]
 all = ["wav", "flac", "mp3", "ogg", "aac"]
 
 [dependencies]
-rhi-paraphase-core.workspace = true
+paraphase-core.workspace = true
 
 # Decoding (pure Rust)
 symphonia = { version = "0.5", default-features = false }

@@ -10,12 +10,12 @@ repository = "https://github.com/rhi-zone/paraphase"
 
 [workspace.dependencies]
 # Internal
-rhi-paraphase-core = { path = "crates/paraphase-core" }
-rhi-paraphase-plugin = { path = "crates/paraphase-plugin" }
-rhi-paraphase-serde = { path = "crates/paraphase-serde" }
-rhi-paraphase-image = { path = "crates/paraphase-image" }
-rhi-paraphase-video = { path = "crates/paraphase-video" }
-rhi-paraphase-audio = { path = "crates/paraphase-audio" }
+paraphase-core = { path = "crates/paraphase-core" }
+paraphase-plugin = { path = "crates/paraphase-plugin" }
+paraphase-serde = { path = "crates/paraphase-serde" }
+paraphase-image = { path = "crates/paraphase-image" }
+paraphase-video = { path = "crates/paraphase-video" }
+paraphase-audio = { path = "crates/paraphase-audio" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

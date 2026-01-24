@@ -30,7 +30,7 @@
 
 use image::{DynamicImage, GenericImageView, ImageFormat, Rgba};
 use indexmap::IndexMap;
-use rhi_paraphase_core::{
+use paraphase_core::{
     ConvertError, ConvertOutput, Converter, ConverterDecl, NamedInput, PortDecl, Predicate,
     Properties, PropertyPattern, Registry,
 };
@@ -794,7 +794,7 @@ pub fn detect_format(path: &str) -> Option<(&'static str, ImageFormat)> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rhi_paraphase_core::PropertiesExt;
+    use paraphase_core::PropertiesExt;
 
     #[test]
     fn test_register_all() {

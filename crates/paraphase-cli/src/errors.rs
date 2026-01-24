@@ -4,7 +4,7 @@
 #![allow(clippy::collapsible_match)]
 #![allow(clippy::manual_find)]
 
-use rhi_paraphase_core::Registry;
+use paraphase_core::Registry;
 use std::path::Path;
 
 /// Supported format categories for error messages.
@@ -245,7 +245,7 @@ fn levenshtein(a: &str, b: &str) -> usize {
 
 /// Find formats reachable from a source format (1-hop only for simplicity).
 fn find_reachable_formats(source: &str, registry: &Registry) -> Vec<String> {
-    use rhi_paraphase_core::{Properties, PropertiesExt};
+    use paraphase_core::{Properties, PropertiesExt};
 
     let source_props = Properties::new().with("format", source);
     let mut targets = Vec::new();
@@ -255,7 +255,7 @@ fn find_reachable_formats(source: &str, registry: &Registry) -> Vec<String> {
             // Get output format from first output port
             if let Some((_, port)) = decl.outputs.iter().next() {
                 if let Some(pred) = port.pattern.predicates.get("format") {
-                    if let rhi_paraphase_core::Predicate::Eq(val) = pred {
+                    if let paraphase_core::Predicate::Eq(val) = pred {
                         if let Some(fmt) = val.as_str() {
                             if !targets.contains(&fmt.to_string()) {
                                 targets.push(fmt.to_string());
@@ -282,7 +282,7 @@ fn find_source_formats(target: &str, registry: &Registry) -> Vec<String> {
                 .predicates
                 .get("format")
                 .map(|pred| {
-                    if let rhi_paraphase_core::Predicate::Eq(val) = pred {
+                    if let paraphase_core::Predicate::Eq(val) = pred {
                         val.as_str() == Some(target)
                     } else {
                         false
@@ -295,7 +295,7 @@ fn find_source_formats(target: &str, registry: &Registry) -> Vec<String> {
             // Get input format
             for port in decl.inputs.values() {
                 if let Some(pred) = port.pattern.predicates.get("format") {
-                    if let rhi_paraphase_core::Predicate::Eq(val) = pred {
+                    if let paraphase_core::Predicate::Eq(val) = pred {
                         if let Some(fmt) = val.as_str() {
                             if !sources.contains(&fmt.to_string()) {
                                 sources.push(fmt.to_string());

@@ -17,7 +17,7 @@ use clap_complete::{Shell, generate};
 use config::{Config, Preset};
 use indexmap::IndexMap;
 use indicatif::{ProgressBar, ProgressStyle};
-use rhi_paraphase_core::{
+use paraphase_core::{
     BoundedExecutor, Cardinality, ConvertOutput, ExecutionContext, Executor, NamedInput,
     OptimizeTarget, Plan, Planner, Properties, PropertiesExt, PropertyPattern, Registry,
     SimpleExecutor, Sink, Source, Workflow,
@@ -426,16 +426,16 @@ fn main() -> Result<()> {
     let mut registry = Registry::new();
 
     #[cfg(feature = "serde")]
-    rhi_paraphase_serde::register_all(&mut registry);
+    paraphase_serde::register_all(&mut registry);
 
     #[cfg(feature = "image")]
-    rhi_paraphase_image::register_all(&mut registry);
+    paraphase_image::register_all(&mut registry);
 
     #[cfg(feature = "video")]
-    rhi_paraphase_video::register_all(&mut registry);
+    paraphase_video::register_all(&mut registry);
 
     #[cfg(feature = "audio")]
-    rhi_paraphase_audio::register_all(&mut registry);
+    paraphase_audio::register_all(&mut registry);
 
     // Apply config defaults, CLI flags override
     let memory_limit = cli.memory_limit.or(config.defaults.memory_limit);
@@ -912,7 +912,7 @@ fn cmd_run(
             steps: workflow
                 .steps
                 .iter()
-                .map(|s| rhi_paraphase_core::PlanStep {
+                .map(|s| paraphase_core::PlanStep {
                     converter_id: s.converter.clone(),
                     input_port: "in".into(),
                     output_port: "out".into(),
@@ -1045,7 +1045,7 @@ fn cmd_convert_aggregate(
     memory_limit: Option<usize>,
     v: Verbosity,
 ) -> Result<()> {
-    use rhi_paraphase_core::{ExecutionContext, Executor, SimpleExecutor};
+    use paraphase_core::{ExecutionContext, Executor, SimpleExecutor};
     use std::sync::Arc;
 
     let target_format = to.context("Aggregation requires --to format")?;
@@ -1099,7 +1099,7 @@ fn cmd_convert_aggregate(
     };
 
     // Build plan: aggregate step + optional compression step
-    let mut steps = vec![rhi_paraphase_core::PlanStep {
+    let mut steps = vec![paraphase_core::PlanStep {
         converter_id: aggregator_id.into(),
         input_port: "in".into(),
         output_port: "out".into(),
@@ -1114,7 +1114,7 @@ fn cmd_convert_aggregate(
             "br" | "brotli" => "compression.brotli",
             _ => bail!("Unknown compression format: {}", comp),
         };
-        steps.push(rhi_paraphase_core::PlanStep {
+        steps.push(paraphase_core::PlanStep {
             converter_id: compressor_id.into(),
             input_port: "in".into(),
             output_port: "out".into(),
@@ -1122,7 +1122,7 @@ fn cmd_convert_aggregate(
         });
     }
 
-    let plan = rhi_paraphase_core::Plan { steps, cost: 1.0 };
+    let plan = paraphase_core::Plan { steps, cost: 1.0 };
 
     // Execute aggregation
     let ctx = ExecutionContext::new(Arc::new(registry.clone()))

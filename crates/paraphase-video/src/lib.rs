@@ -2,7 +2,7 @@
 //!
 //! Provides video transcoding via FFmpeg. Requires FFmpeg libraries at runtime.
 
-use rhi_paraphase_core::{
+use paraphase_core::{
     ConvertError, ConvertOutput, Converter, ConverterDecl, Properties, PropertyPattern, Registry,
 };
 

@@ -53,7 +53,7 @@
 //! ## Feature group
 //! - `all` - All formats
 
-use rhi_paraphase_core::{
+use paraphase_core::{
     ConvertError, ConvertOutput, Converter, ConverterDecl, PortDecl, Properties, PropertyPattern,
     Registry,
 };
@@ -1266,7 +1266,7 @@ mod spreadsheet_impl {
 
     impl SpreadsheetToJson {
         fn decl() -> ConverterDecl {
-            use rhi_paraphase_core::{Predicate, Value};
+            use paraphase_core::{Predicate, Value};
             ConverterDecl::simple(
                 "spreadsheet-to-json",
                 PropertyPattern::new().with(
@@ -1869,7 +1869,7 @@ fn serialize(format: &str, value: &serde_json::Value) -> Result<Vec<u8>, Convert
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rhi_paraphase_core::PropertiesExt;
+    use paraphase_core::PropertiesExt;
 
     #[test]
     #[cfg(all(feature = "json", feature = "yaml"))]
