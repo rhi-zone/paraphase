@@ -119,7 +119,7 @@ impl NumericValue {
     ///
     /// When `dew` feature is enabled, expressions are evaluated using Dew.
     /// When disabled, expressions return an error.
-    #[cfg(feature = "dew")]
+    #[cfg(feature = "wick")]
     pub fn eval(&self, vars: &HashMap<String, f64>) -> Result<f64, String> {
         match self {
             NumericValue::Literal(n) => Ok(*n),
@@ -129,7 +129,7 @@ impl NumericValue {
         }
     }
 
-    #[cfg(not(feature = "dew"))]
+    #[cfg(not(feature = "wick"))]
     pub fn eval(&self, _vars: &HashMap<String, f64>) -> Result<f64, String> {
         match self {
             NumericValue::Literal(n) => Ok(*n),

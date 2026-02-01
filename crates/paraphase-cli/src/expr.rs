@@ -6,17 +6,17 @@
 //! and Dew's expression language, enabling dynamic preset values.
 
 use paraphase_core::Properties;
-use rhizome_dew_core::Expr;
-use rhizome_dew_scalar::{FunctionRegistry, eval, scalar_registry};
 use std::collections::HashMap;
+use wick_core::Expr;
+use wick_scalar::{FunctionRegistry, eval, scalar_registry};
 
 /// Errors that can occur during expression evaluation.
 #[derive(Debug)]
 pub enum ExprError {
     /// Failed to parse the expression.
-    Parse(rhizome_dew_core::ParseError),
+    Parse(wick_core::ParseError),
     /// Failed to evaluate the expression.
-    Eval(rhizome_dew_scalar::Error),
+    Eval(wick_scalar::Error),
 }
 
 impl std::fmt::Display for ExprError {
@@ -30,14 +30,14 @@ impl std::fmt::Display for ExprError {
 
 impl std::error::Error for ExprError {}
 
-impl From<rhizome_dew_core::ParseError> for ExprError {
-    fn from(e: rhizome_dew_core::ParseError) -> Self {
+impl From<wick_core::ParseError> for ExprError {
+    fn from(e: wick_core::ParseError) -> Self {
         ExprError::Parse(e)
     }
 }
 
-impl From<rhizome_dew_scalar::Error> for ExprError {
-    fn from(e: rhizome_dew_scalar::Error) -> Self {
+impl From<wick_scalar::Error> for ExprError {
+    fn from(e: wick_scalar::Error) -> Self {
         ExprError::Eval(e)
     }
 }
