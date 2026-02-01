@@ -8,7 +8,7 @@
 
 mod config;
 mod errors;
-#[cfg(feature = "dew")]
+#[cfg(feature = "wick")]
 mod expr;
 
 use anyhow::{Context, Result, bail};
@@ -656,7 +656,7 @@ fn cmd_presets(config: &Config, v: Verbosity) -> Result<()> {
         v.info(&format!("\nConfig file: {}", path.display()));
     }
 
-    #[cfg(feature = "dew")]
+    #[cfg(feature = "wick")]
     v.info("\nNote: Expression support enabled (dew feature)");
 
     Ok(())

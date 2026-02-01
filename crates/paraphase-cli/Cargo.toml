@@ -28,11 +28,11 @@ audio-all = ["audio", "paraphase-audio/all"]
 # Parallel execution (batch processing)
 parallel = ["paraphase-core/parallel"]
 
-# Dynamic expressions in presets (via Dew)
-dew = ["dep:rhizome-dew-core", "dep:rhizome-dew-scalar"]
+# Dynamic expressions in presets (via Wick)
+wick = ["dep:wick-core", "dep:wick-scalar"]
 
 # Everything (video excluded from default, requires FFmpeg)
-all = ["serde-all", "image-all", "video-all", "audio-all", "parallel", "dew"]
+all = ["serde-all", "image-all", "video-all", "audio-all", "parallel", "wick"]
 
 [dependencies]
 paraphase-core.workspace = true
@@ -55,6 +55,6 @@ dirs = "6"
 glob = "0.3"
 walkdir = "2"
 
-# Dew expression language (optional) - still using rhizome- prefix until dew is renamed
-rhizome-dew-core = { path = "../../../dew/crates/dew-core", features = ["cond", "func"], optional = true }
-rhizome-dew-scalar = { path = "../../../dew/crates/dew-scalar", optional = true }
+# Wick expression language (optional)
+wick-core = { version = "0.1.0", features = ["cond", "func"], optional = true }
+wick-scalar = { version = "0.1.0", optional = true }
