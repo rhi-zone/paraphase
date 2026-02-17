@@ -1,6 +1,6 @@
 # Open Questions
 
-Unresolved design decisions for Paraphrase.
+Unresolved design decisions for Paraphase.
 
 ## Resolved
 
@@ -61,7 +61,7 @@ dew-core       # Syntax only: AST, parsing
     +-- dew-quaternion # Quaternions
 ```
 
-Paraphrase likely just needs `dew-core` + `dew-scalar` for cost expressions. Each domain crate has self-contained backends (wgsl, lua, cranelift) as features.
+Paraphase likely just needs `dew-core` + `dew-scalar` for cost expressions. Each domain crate has self-contained backends (wgsl, lua, cranelift) as features.
 
 ### Property naming: what needs namespacing?
 
@@ -100,7 +100,7 @@ Open:
 
 **Decision:** Semver ranges.
 
-Plugins declare compatible paraphase API versions (e.g., `^1.0`). Paraphrase checks compatibility at load time. Breaking API changes bump major version.
+Plugins declare compatible paraphase API versions (e.g., `^1.0`). Paraphase checks compatibility at load time. Breaking API changes bump major version.
 
 ```c
 // Plugin exports
@@ -178,13 +178,13 @@ paraphase convert --from json --to yaml data output
 
 ### Shared types with Resin?
 
-Do Paraphrase's `Image`, `Mesh`, etc. share definitions with Resin?
-Or is Paraphrase format-agnostic and Resin provides domain IRs?
+Do Paraphase's `Image`, `Mesh`, etc. share definitions with Resin?
+Or is Paraphase format-agnostic and Resin provides domain IRs?
 
 Options:
-1. **Paraphrase is format-only** - knows `png`, `obj`, not `Image`, `Mesh`
+1. **Paraphase is format-only** - knows `png`, `obj`, not `Image`, `Mesh`
 2. **Shared IR crate** - `rhizome-types` used by both
-3. **Paraphrase defines IRs** - Resin depends on paraphase's `Image` type
+3. **Paraphase defines IRs** - Resin depends on paraphase's `Image` type
 
 ## Converter Model (N→M Conversions)
 

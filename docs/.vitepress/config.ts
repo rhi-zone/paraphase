@@ -8,7 +8,7 @@ export default withMermaid(
         include: ['mermaid'],
       },
     },
-    title: 'Paraphrase',
+    title: 'Paraphase',
     description: 'Pipeline orchestrator for data conversion',
 
     base: '/paraphase/',
@@ -36,7 +36,7 @@ export default withMermaid(
       },
 
       socialLinks: [
-        { icon: 'github', link: 'https://github.com/rhizome-lab/paraphase' }
+        { icon: 'github', link: 'https://github.com/rhi-zone/paraphase' }
       ],
 
       search: {
@@ -44,7 +44,7 @@ export default withMermaid(
       },
 
       editLink: {
-        pattern: 'https://github.com/rhizome-lab/paraphase/edit/master/docs/:path',
+        pattern: 'https://github.com/rhi-zone/paraphase/edit/master/docs/:path',
         text: 'Edit this page on GitHub'
       },
     },

@@ -2345,11 +2345,11 @@ dependencies = [
  "paraphase-serde",
  "paraphase-video",
  "pure-magic",
- "rhizome-dew-core",
- "rhizome-dew-scalar",
  "serde",
  "toml 0.8.23",
  "walkdir",
+ "wick-core",
+ "wick-scalar",
 ]
 
 [[package]]
@@ -3013,29 +3013,6 @@ name = "rgb"
 version = "0.8.52"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c6a884d2998352bb4daf0183589aec883f16a6da1f4dde84d8e2e9a5409a1ce"
-
-[[package]]
-name = "rhizome-dew-cond"
-version = "0.1.0"
-dependencies = [
- "rhizome-dew-core",
-]
-
-[[package]]
-name = "rhizome-dew-core"
-version = "0.1.0"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
-name = "rhizome-dew-scalar"
-version = "0.1.0"
-dependencies = [
- "num-traits",
- "rhizome-dew-cond",
- "rhizome-dew-core",
-]
 
 [[package]]
 name = "rmp"
@@ -4038,6 +4015,35 @@ name = "weezl"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a28ac98ddc8b9274cb41bb4d9d4d5c425b6020c50c46f25559911905610b4a88"
+
+[[package]]
+name = "wick-cond"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4480e7f589afc56ad3e1ba930713c3fef0e0665c96074603ebf29f8f62df245"
+dependencies = [
+ "wick-core",
+]
+
+[[package]]
+name = "wick-core"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f05e3ba1baf78dbf40c18fa2faf174e22da64454d7aad0089a42f0fd36255827"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "wick-scalar"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f40ba30d044c704628e22e4fd6968972d721c26a58b2f9fc5923d72a6214f0d6"
+dependencies = [
+ "num-traits",
+ "wick-cond",
+ "wick-core",
+]
 
 [[package]]
 name = "winapi-util"

@@ -1,6 +1,6 @@
 # Formats Reference
 
-Complete list of formats supported by Paraphrase converters.
+Complete list of formats supported by Paraphase converters.
 
 ## Serde Formats (paraphase-serde)
 

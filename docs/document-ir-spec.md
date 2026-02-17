@@ -480,9 +480,9 @@ docir/
 └── docir-wasm/         # WebAssembly bindings
 ```
 
-## Integration with Paraphrase
+## Integration with Paraphase
 
-Paraphrase would use this IR through a thin integration crate:
+Paraphase would use this IR through a thin integration crate:
 
 ```rust
 // paraphase-document/src/lib.rs
@@ -490,14 +490,14 @@ Paraphrase would use this IR through a thin integration crate:
 use paraphase::{Converter, Registry};
 use docir::{Parser, Emitter};
 
-/// Register document converters with Paraphrase.
+/// Register document converters with Paraphase.
 pub fn register_all(registry: &mut Registry) {
     // For each parser/emitter combination, register a converter
     // that goes: input format → Document IR → output format
 }
 ```
 
-Paraphrase handles:
+Paraphase handles:
 - Routing (which converter to use)
 - Execution (memory management, parallelism)
 - Property matching
