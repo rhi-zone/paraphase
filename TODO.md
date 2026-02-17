@@ -168,6 +168,24 @@ Future work:
 - [ ] `crates/paraphase-serde/src/lib.rs:deserialize` (21)
 - [ ] `crates/paraphase-serde/src/lib.rs:serialize` (21)
 
+## 3D Formats (paraphase-3d)
+
+### Simple (pure Rust, well-supported)
+
+- [ ] **STL** - `stl_io`; triangle meshes, common for 3D printing (text + binary variants)
+- [ ] **OBJ/Wavefront** - `tobj`; widely supported mesh format (vertices, normals, UVs)
+- [ ] **PLY** - `ply-rs`; point clouds and meshes, used in scanning/research
+
+### Medium (pure Rust, richer format)
+
+- [ ] **glTF/GLB** - `gltf`; modern "JPEG of 3D", scenes with meshes/materials/animations
+- [ ] **3MF** - XML-based 3D printing format (zip container with XML mesh data)
+
+### Complex (harder ecosystem)
+
+- [ ] **COLLADA/DAE** - XML scene description; broad but complex schema
+- [ ] **FBX** - Autodesk proprietary; limited open-source support
+
 ## Distribution
 
 Implemented:
