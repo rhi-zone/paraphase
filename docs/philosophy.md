@@ -1,8 +1,8 @@
 # Philosophy
 
-Core design principles for Paraphrase.
+Core design principles for Paraphase.
 
-## Paraphrase is a Pipeline Orchestrator
+## Paraphase is a Pipeline Orchestrator
 
 **Founding use case:** Game asset conversion - textures, meshes, audio, configs all need processing through diverse tools with inconsistent interfaces.
 
@@ -12,19 +12,19 @@ Core design principles for Paraphrase.
 
 The deeper motivation: **agents suck at toolchains.**
 
-When an AI agent (like moss) needs to convert data, it faces:
+When converting data programmatically, you face:
 - "Do I run blender? gltf-pipeline? meshoptimizer?"
 - "What flags? Is it installed? Which version?"
 - Hallucinated flags, wrong CLI versions, failed optimizations
 
-**Paraphrase solves this by being a route planner, not a task runner.**
+**Paraphase solves this by being a route planner, not a task runner.**
 
 ```bash
 # Task runner (make/just): agent must know the recipe
 blender --background --python export.py -- input.blend output.glb
 gltf-pipeline -i output.glb -o optimized.glb --draco.compressionLevel 7
 
-# Paraphrase: agent only knows source and destination
+# Paraphase: agent only knows source and destination
 paraphase convert model.blend optimized.glb --optimize
 ```
 
@@ -37,7 +37,7 @@ The agent says "I have X, I need Y" - paraphase finds the path through the graph
 | Make | File-based, mtime-driven | You write the recipes |
 | Just | Task runner | You write the recipes manually |
 | Nix | Content-addressed, reproducible | Heavyweight, config-heavy |
-| Paraphrase | Type-driven route planning | Agent just declares intent |
+| Paraphase | Type-driven route planning | Agent just declares intent |
 
 **Scope test:** If the transformation is "agent shouldn't need to know the toolchain," it's in scope. If it requires business logic or architectural decisions, it's out.
 
@@ -74,7 +74,7 @@ Incomplete plans = suggestions. No separate `suggest` command.
 ```bash
 # Incomplete: only source and sink
 paraphase plan --from input.png --to output.webp
-# Paraphrase suggests pipeline + shows what options are available
+# Paraphase suggests pipeline + shows what options are available
 
 # Complete: shows exact execution plan
 paraphase plan workflow.yaml
@@ -82,7 +82,7 @@ paraphase plan workflow.yaml
 
 ## Normalized Options
 
-Users learn ONE vocabulary. Paraphrase maps to tool-specific flags:
+Users learn ONE vocabulary. Paraphase maps to tool-specific flags:
 
 ```bash
 # Same --quality flag everywhere
@@ -209,7 +209,7 @@ Why regex: agents know regex (even if imperfectly), no new DSL to learn.
 
 ## Plugins, Not Monolith
 
-Unlike pandoc/ffmpeg (which bundle everything), Paraphrase is:
+Unlike pandoc/ffmpeg (which bundle everything), Paraphase is:
 - **Core**: property bags, graph traversal, workflow orchestration, CLI
 - **Plugins**: converters, inspectors, pattern extractors
 
@@ -223,7 +223,7 @@ Plugins are C ABI dynamic libraries. See [ADR-0001](./architecture-decisions.md#
 
 ## Library-First
 
-Paraphrase is a library with a CLI wrapper, not vice versa.
+Paraphase is a library with a CLI wrapper, not vice versa.
 
 ```rust
 use paraphase::{Registry, Workflow};
@@ -249,7 +249,7 @@ One model, many uses.
 
 ## Prior Art & Inspiration
 
-Tools that informed Paraphrase's design:
+Tools that informed Paraphase's design:
 
 | Tool | What It Does | What We Take |
 |------|--------------|--------------|
@@ -259,4 +259,4 @@ Tools that informed Paraphrase's design:
 | **[ImageMagick](https://imagemagick.org)** | Image manipulation | Batch processing, format detection |
 | **[jq](https://jqlang.github.io/jq/)** | JSON processor | Streaming, composable transformations |
 
-**Key difference:** These tools are format-specific or monolithic. Paraphrase is a **unified orchestrator** - one interface that routes to the right tool for each conversion.
+**Key difference:** These tools are format-specific or monolithic. Paraphase is a **unified orchestrator** - one interface that routes to the right tool for each conversion.

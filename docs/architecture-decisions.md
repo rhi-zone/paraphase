@@ -1,6 +1,6 @@
 # Architecture Decisions
 
-Record of key technical choices for Paraphrase.
+Record of key technical choices for Paraphase.
 
 ## ADR-0001: Plugin Format - C ABI Dynamic Libraries
 
@@ -8,7 +8,7 @@ Record of key technical choices for Paraphrase.
 
 **Context:**
 
-Paraphrase needs a plugin system for converters. Options considered:
+Paraphase needs a plugin system for converters. Options considered:
 
 | Format | Authoring | Performance | Sandboxing | Distribution |
 |--------|-----------|-------------|------------|--------------|
@@ -43,7 +43,7 @@ typedef struct {
     const char* from_type;    // e.g. "json"
     const char* to_type;      // e.g. "yaml"
     uint32_t flags;           // CAMBIUM_FLAG_* bitmask
-} ParaphraseConverter;
+} ParaphaseConverter;
 
 // Flags
 #define CAMBIUM_FLAG_LOSSLESS   (1 << 0)
@@ -55,7 +55,7 @@ typedef struct {
 uint32_t paraphase_plugin_version(void);
 
 // List available converters (caller does NOT free)
-const ParaphraseConverter* paraphase_list_converters(size_t* count);
+const ParaphaseConverter* paraphase_list_converters(size_t* count);
 
 // Perform conversion
 // Returns 0 on success, non-zero error code on failure
@@ -90,7 +90,7 @@ fn json_to_yaml(input: &[u8], _opts: &Options) -> Result<Vec<u8>> {
 
 // Macro generates:
 // - #[no_mangle] extern "C" fn paraphase_plugin_version() -> u32
-// - #[no_mangle] extern "C" fn paraphase_list_converters(*mut usize) -> *const ParaphraseConverter
+// - #[no_mangle] extern "C" fn paraphase_list_converters(*mut usize) -> *const ParaphaseConverter
 // - #[no_mangle] extern "C" fn paraphase_convert(...) -> i32
 // - #[no_mangle] extern "C" fn paraphase_free(*mut c_void)
 // - #[no_mangle] extern "C" fn paraphase_last_error() -> *const c_char
@@ -120,7 +120,7 @@ fn load_plugin(path: &Path) -> Result<Plugin> {
         return Err(IncompatibleVersion);
     }
 
-    let list: Symbol<fn(*mut usize) -> *const ParaphraseConverter> =
+    let list: Symbol<fn(*mut usize) -> *const ParaphaseConverter> =
         lib.get(b"paraphase_list_converters")?;
     // ... register converters
 }
@@ -148,7 +148,7 @@ fn load_plugin(path: &Path) -> Result<Plugin> {
 
 **Context:**
 
-Paraphrase can be designed as either:
+Paraphase can be designed as either:
 1. **Library-first** - Rust crate with CLI as thin wrapper
 2. **CLI-first** - Command-line tool that can also be used as library
 
@@ -344,7 +344,7 @@ crates/
 
 **Context:**
 
-Paraphrase needs a way to represent "what kind of data is this" for routing conversions. Options considered:
+Paraphase needs a way to represent "what kind of data is this" for routing conversions. Options considered:
 
 | Model | Example | Expressiveness |
 |-------|---------|----------------|
@@ -501,7 +501,7 @@ removes: [pages, ...]  // PDF-specific props don't apply to image
 
 **Context:**
 
-Paraphrase needs to handle N→M conversions (1→1, 1→N, N→1, N→M). Early designs tried to encode cardinality in PropertyPattern itself (via `$each` syntax or separate Cardinality enum), which felt awkward and coupled concerns.
+Paraphase needs to handle N→M conversions (1→1, 1→N, N→1, N→M). Early designs tried to encode cardinality in PropertyPattern itself (via `$each` syntax or separate Cardinality enum), which felt awkward and coupled concerns.
 
 Prior art: [ComfyUI](https://github.com/comfyanonymous/ComfyUI) uses named input/output ports with explicit types, handling multiple outputs and list/batch processing cleanly.
 
@@ -607,9 +607,9 @@ steps:
 
 **Context:**
 
-As Paraphrase adds more transformations (resize, crop, watermark), the question arises: when does a "conversion tool" become an "asset editor"? Without a clear boundary, scope creep leads to reimplementing Photoshop.
+As Paraphase adds more transformations (resize, crop, watermark), the question arises: when does a "conversion tool" become an "asset editor"? Without a clear boundary, scope creep leads to reimplementing Photoshop.
 
-**Decision:** Paraphrase handles transformations expressible as **normalized options or property constraints**. Operations requiring **pixel-level precision or creative judgment** are out of scope.
+**Decision:** Paraphase handles transformations expressible as **normalized options or property constraints**. Operations requiring **pixel-level precision or creative judgment** are out of scope.
 
 **The test:** Can an agent express the operation without looking at the specific content?
 
@@ -632,7 +632,7 @@ From the philosophy doc: "Agent says 'I have X, I need Y' - paraphase finds the 
 
 **Normalized options:**
 
-Paraphrase's philosophy is one vocabulary, many backends:
+Paraphase's philosophy is one vocabulary, many backends:
 
 ```bash
 # Same --max-width everywhere
@@ -640,7 +640,7 @@ paraphase convert image.png image.webp --max-width 1024
 paraphase convert video.mp4 video.webp --max-width 1024
 ```
 
-Options that can be normalized across domains belong in Paraphrase. Options that are tool-specific creative controls don't.
+Options that can be normalized across domains belong in Paraphase. Options that are tool-specific creative controls don't.
 
 **Multi-input operations:**
 
@@ -667,7 +667,7 @@ options:
 
 **Position presets:**
 
-For operations requiring placement, Paraphrase provides semantic presets:
+For operations requiring placement, Paraphase provides semantic presets:
 
 | Preset | Meaning |
 |--------|---------|
@@ -725,7 +725,7 @@ If a transformation becomes common enough that agents frequently need it AND it 
 
 **Context:**
 
-Paraphrase's current architecture has three layers:
+Paraphase's current architecture has three layers:
 1. **Converters** - individual transformations (bytes → bytes)
 2. **Planner** - finds conversion paths
 3. **CLI** - orchestrates execution

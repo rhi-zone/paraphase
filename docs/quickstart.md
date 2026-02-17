@@ -1,6 +1,6 @@
 # Quickstart
 
-Get up and running with Paraphrase in minutes.
+Get up and running with Paraphase in minutes.
 
 ## Installation
 
@@ -8,7 +8,7 @@ Get up and running with Paraphrase in minutes.
 cargo install paraphase-cli
 ```
 
-This installs Paraphrase with default converters (common serde and image formats).
+This installs Paraphase with default converters (common serde and image formats).
 
 ### Minimal or Custom Builds
 
@@ -28,7 +28,7 @@ cargo install paraphase-cli --features all
 
 ### Convert Files
 
-Paraphrase auto-detects formats from file extensions:
+Paraphase auto-detects formats from file extensions:
 
 ```bash
 # Config formats
@@ -48,7 +48,7 @@ paraphase convert data.bin output.json --from msgpack --to json
 
 ### Plan Conversions
 
-See what Paraphrase will do without executing:
+See what Paraphase will do without executing:
 
 ```bash
 paraphase plan input.json output.toml
@@ -92,7 +92,7 @@ Run with auto-planning:
 paraphase run workflow.yaml
 ```
 
-Paraphrase finds the conversion path automatically.
+Paraphase finds the conversion path automatically.
 
 ### Explicit Steps
 

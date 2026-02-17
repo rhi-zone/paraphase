@@ -1,17 +1,15 @@
-# Paraphrase
+# Paraphase
 
 Type-driven data transformation pipeline.
 
-Part of the [rhi](https://rhi.zone) ecosystem.
-
 ## Overview
 
-Paraphrase is a route planner for data conversion. Given source and target properties, it finds a path through available converters automatically.
+Paraphase is a route planner for data conversion. Given source and target properties, it finds a path through available converters automatically.
 
 ## Installation
 
 ```bash
-cargo install rhi-paraphase-cli
+cargo install paraphase-cli
 ```
 
 ### Feature Flags
@@ -36,14 +34,14 @@ For minimal builds or specific formats:
 
 ```bash
 # Only JSON and PNG
-cargo install rhi-paraphase-cli --no-default-features \
-  --features rhi-paraphase-serde/json,rhi-paraphase-image/png
+cargo install paraphase-cli --no-default-features \
+  --features paraphase-serde/json,paraphase-image/png
 
 # Serde formats only (no image support)
-cargo install rhi-paraphase-cli --no-default-features --features serde-all
+cargo install paraphase-cli --no-default-features --features serde-all
 
 # Everything
-cargo install rhi-paraphase-cli --features all
+cargo install paraphase-cli --features all
 ```
 
 ## Usage
@@ -151,7 +149,7 @@ sink:
 
 ## Supported Formats
 
-### Serde Formats (rhi-paraphase-serde)
+### Serde Formats (paraphase-serde)
 
 | Format | Feature | Extensions |
 |--------|---------|------------|
@@ -174,7 +172,7 @@ sink:
 | Pickle | `pickle` | .pickle, .pkl |
 | Property List | `plist` | .plist |
 
-### Image Formats (rhi-paraphase-image)
+### Image Formats (paraphase-image)
 
 | Format | Feature | Extensions |
 |--------|---------|------------|
@@ -193,7 +191,7 @@ sink:
 | OpenEXR | `openexr` | .exr |
 | Radiance HDR | `hdr` | .hdr |
 
-### Video Formats (rhi-paraphase-video)
+### Video Formats (paraphase-video)
 
 | Format | Feature | Extensions |
 |--------|---------|------------|
@@ -204,7 +202,7 @@ sink:
 | MOV | `mov` | .mov, .qt |
 | GIF | `gif` | .gif |
 
-### Audio Formats (rhi-paraphase-audio)
+### Audio Formats (paraphase-audio)
 
 | Format | Feature | Decode | Encode |
 |--------|---------|--------|--------|

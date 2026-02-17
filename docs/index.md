@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Paraphrase
+  name: Paraphase
   text: Pipeline orchestrator for data conversion
   tagline: Type-driven route planning for transforming data between formats
   actions:
