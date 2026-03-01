@@ -24,7 +24,7 @@ geo = ["dep:paraphase-geo"]
 pki = ["dep:paraphase-pki"]
 subtitle = ["dep:paraphase-subtitle"]
 color = ["dep:paraphase-color"]
-threed = ["dep:paraphase-3d"]
+mesh = ["dep:paraphase-3d"]
 
 # Enable all formats in each backend
 serde-all = ["serde", "paraphase-serde/all"]
@@ -37,7 +37,7 @@ geo-all = ["geo", "paraphase-geo/all"]
 pki-all = ["pki", "paraphase-pki/all"]
 subtitle-all = ["subtitle", "paraphase-subtitle/all"]
 color-all = ["color", "paraphase-color/all"]
-threed-all = ["threed", "paraphase-3d/all"]
+mesh-all = ["mesh", "paraphase-3d/all"]
 
 # Parallel execution (batch processing)
 parallel = ["paraphase-core/parallel"]
@@ -49,7 +49,7 @@ wick = ["dep:wick-core", "dep:wick-scalar"]
 all = [
     "serde-all", "image-all", "video-all", "audio-all",
     "vector-all", "font-all", "geo-all", "pki-all", "subtitle-all", "color-all",
-    "threed-all", "parallel", "wick",
+    "mesh-all", "parallel", "wick",
 ]
 
 [dependencies]

@@ -455,7 +455,7 @@ fn main() -> Result<()> {
     #[cfg(feature = "color")]
     paraphase_color::register_all(&mut registry);
 
-    #[cfg(feature = "threed")]
+    #[cfg(feature = "mesh")]
     paraphase_3d::register_all(&mut registry);
 
     // Apply config defaults, CLI flags override
