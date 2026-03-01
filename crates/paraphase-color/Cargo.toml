@@ -18,7 +18,10 @@ aco = []
 # Adobe Swatch Exchange (.ase)
 ase = []
 
-all = ["gpl", "aco", "ase"]
+# CSS custom color properties (--var: #rrggbb)
+cssvar = []
+
+all = ["gpl", "aco", "ase", "cssvar"]
 
 [dependencies]
 paraphase-core.workspace = true

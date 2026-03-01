@@ -149,11 +149,13 @@ pub fn register_all(registry: &mut Registry) {
         registry.register(SpreadsheetToJson);
     }
 
-    // Register CSV converters
+    // Register CSV/TSV converters
     #[cfg(feature = "csv")]
     {
         registry.register(CsvToJson);
         registry.register(JsonToCsv);
+        registry.register(TsvToJson);
+        registry.register(JsonToTsv);
     }
 
     // Register XLSX write converter
@@ -1794,10 +1796,137 @@ mod csv_impl {
             Ok(ConvertOutput::Single(output, out_props))
         }
     }
+
+    /// Parse TSV to JSON array of objects (first row = headers).
+    pub struct TsvToJson;
+
+    impl Converter for TsvToJson {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "serde.tsv-to-json",
+                    PropertyPattern::new().eq("format", "tsv"),
+                    PropertyPattern::new().eq("format", "json"),
+                )
+                .description("Parse TSV to JSON array of objects (first row = headers)")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let mut reader = csv::ReaderBuilder::new()
+                .delimiter(b'\t')
+                .from_reader(input);
+            let headers = reader
+                .headers()
+                .map_err(|e| ConvertError::InvalidInput(format!("TSV header error: {}", e)))?
+                .clone();
+
+            let mut records = Vec::new();
+            for result in reader.records() {
+                let record = result
+                    .map_err(|e| ConvertError::InvalidInput(format!("TSV parse error: {}", e)))?;
+                let obj: serde_json::Map<String, serde_json::Value> = headers
+                    .iter()
+                    .zip(record.iter())
+                    .map(|(h, v)| (h.to_string(), serde_json::Value::String(v.to_string())))
+                    .collect();
+                records.push(serde_json::Value::Object(obj));
+            }
+
+            let output = serde_json::to_vec_pretty(&serde_json::Value::Array(records))
+                .map_err(|e| ConvertError::Failed(format!("JSON serialization failed: {}", e)))?;
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "json".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+
+    /// Serialize JSON array of flat objects to TSV.
+    pub struct JsonToTsv;
+
+    impl Converter for JsonToTsv {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "serde.json-to-tsv",
+                    PropertyPattern::new().eq("format", "json"),
+                    PropertyPattern::new().eq("format", "tsv"),
+                )
+                .description("Serialize JSON array of flat objects to TSV")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let value: serde_json::Value = serde_json::from_slice(input)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid JSON: {}", e)))?;
+
+            let array = value.as_array().ok_or_else(|| {
+                ConvertError::InvalidInput("JSON must be an array of objects".into())
+            })?;
+
+            if array.is_empty() {
+                let mut out_props = props.clone();
+                out_props.insert("format".into(), "tsv".into());
+                return Ok(ConvertOutput::Single(Vec::new(), out_props));
+            }
+
+            let mut keys: Vec<String> = Vec::new();
+            for item in array {
+                if let Some(obj) = item.as_object() {
+                    for key in obj.keys() {
+                        if !keys.contains(key) {
+                            keys.push(key.clone());
+                        }
+                    }
+                }
+            }
+
+            let mut output = Vec::new();
+            {
+                let mut writer = csv::WriterBuilder::new()
+                    .delimiter(b'\t')
+                    .from_writer(&mut output);
+
+                writer
+                    .write_record(&keys)
+                    .map_err(|e| ConvertError::Failed(format!("TSV write error: {}", e)))?;
+
+                for item in array {
+                    let empty = serde_json::Value::Null;
+                    let obj = item.as_object();
+                    let row: Vec<String> = keys
+                        .iter()
+                        .map(|k| {
+                            let v = obj.and_then(|o| o.get(k)).unwrap_or(&empty);
+                            match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                serde_json::Value::Null => String::new(),
+                                other => other.to_string(),
+                            }
+                        })
+                        .collect();
+                    writer
+                        .write_record(&row)
+                        .map_err(|e| ConvertError::Failed(format!("TSV write error: {}", e)))?;
+                }
+
+                writer
+                    .flush()
+                    .map_err(|e| ConvertError::Failed(format!("TSV flush error: {}", e)))?;
+            }
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "tsv".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
 }
 
 #[cfg(feature = "csv")]
-pub use csv_impl::{CsvToJson, JsonToCsv};
+pub use csv_impl::{CsvToJson, JsonToCsv, JsonToTsv, TsvToJson};
 
 // ============================================
 // XLSX WRITE
@@ -2283,10 +2412,10 @@ mod tests {
             expected += 1;
         }
 
-        // Plus CSV converters
+        // Plus CSV/TSV converters
         #[cfg(feature = "csv")]
         {
-            expected += 2; // CsvToJson + JsonToCsv
+            expected += 4; // CsvToJson + JsonToCsv + TsvToJson + JsonToTsv
         }
 
         // Plus XLSX write converter
