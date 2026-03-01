@@ -1,0 +1,25 @@
+[package]
+name = "paraphase-color"
+description = "Color palette format converters for Paraphase (GPL, ACO, ASE) — pure Rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["gpl", "aco", "ase"]
+
+# GIMP Palette format (.gpl)
+gpl = []
+
+# Photoshop Color Swatches (.aco)
+aco = []
+
+# Adobe Swatch Exchange (.ase)
+ase = []
+
+all = ["gpl", "aco", "ase"]
+
+[dependencies]
+paraphase-core.workspace = true
+serde_json.workspace = true

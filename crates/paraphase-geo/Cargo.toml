@@ -1,0 +1,21 @@
+[package]
+name = "paraphase-geo"
+description = "Geospatial format converters for Paraphase (GPX, GeoJSON)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["gpx"]
+
+# GPX ↔ GeoJSON
+gpx = ["dep:gpx", "dep:serde_json", "dep:geo-types"]
+
+all = ["gpx"]
+
+[dependencies]
+paraphase-core.workspace = true
+serde_json = { workspace = true, optional = true }
+gpx = { version = "0.10", optional = true }
+geo-types = { version = "0.7", optional = true }

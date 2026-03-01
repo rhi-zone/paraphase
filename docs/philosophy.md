@@ -221,6 +221,37 @@ paraphase plugin add paraphase-regex    # pattern extraction
 
 Plugins are C ABI dynamic libraries. See [ADR-0001](./architecture-decisions.md#adr-0001-plugin-format---c-abi-dynamic-libraries).
 
+## Hand-Rolled Formats Are Standalone Crates
+
+When Paraphase rolls its own parser/writer for a format, the implementation lives in a
+**standalone crate** (e.g. `amazon-ion`, `woff`, `subtitle-formats`) that is useful
+independently of Paraphase. The `paraphase-*` crate is a thin wrapper that registers
+converters against the Paraphase registry.
+
+Rationale: other projects (e.g. rescribe) may need the same format support. They should
+depend on the standalone crate, not on Paraphase.
+
+The pattern:
+```
+amazon-ion          ← general-purpose Ion parser/writer (no Paraphase dependency)
+└── paraphase-ion   ← thin wrapper: registers Ion converters with the registry
+```
+
+This applies to every hand-rolled format. When wrapping an existing ecosystem crate
+(e.g. `gpx`, `pem-rfc7468`) there is no standalone crate needed — the ecosystem crate
+already serves that role.
+
+Standalone crates should prefer **non-destructive parsing** — preserve structure and
+formatting when round-tripping, only touching what was explicitly changed. This is also
+rescribe's core design principle (and its main advantage over Pandoc). Alignment here
+is by design, not coincidence: the same philosophy should flow through the whole stack.
+
+An **IR** is the natural consequence of **combinatorics**, not of losslessness. Without
+an IR you need N×M converters; with one you need N parsers + M serializers. Losslessness
+is a separate, orthogonal property — it depends on how expressive the IR is, not on
+whether one exists. `subparse` has `SubtitleEntry`, `boko` has a node/style IR, rescribe
+has its own document IR — all arrived at the same structure for the same reason.
+
 ## Library-First
 
 Paraphase is a library with a CLI wrapper, not vice versa.

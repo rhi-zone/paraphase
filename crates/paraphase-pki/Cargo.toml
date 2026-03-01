@@ -1,0 +1,19 @@
+[package]
+name = "paraphase-pki"
+description = "PKI/certificate format converters for Paraphase (PEM, DER)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["pem"]
+
+# PEM ↔ DER conversion via pem-rfc7468
+pem = ["dep:pem-rfc7468"]
+
+all = ["pem"]
+
+[dependencies]
+paraphase-core.workspace = true
+pem-rfc7468 = { version = "1.0", features = ["alloc"], optional = true }

@@ -1,0 +1,24 @@
+[package]
+name = "paraphase-subtitle"
+description = "Subtitle format converters for Paraphase (SRT, VTT, SBV) — pure Rust"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["srt", "vtt", "sbv"]
+
+# SRT - SubRip subtitle format
+srt = []
+
+# WebVTT - Web Video Text Tracks
+vtt = []
+
+# SBV - SubViewer format (YouTube)
+sbv = []
+
+all = ["srt", "vtt", "sbv"]
+
+[dependencies]
+paraphase-core.workspace = true

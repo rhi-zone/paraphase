@@ -437,6 +437,24 @@ fn main() -> Result<()> {
     #[cfg(feature = "audio")]
     paraphase_audio::register_all(&mut registry);
 
+    #[cfg(feature = "vector")]
+    paraphase_vector::register_all(&mut registry);
+
+    #[cfg(feature = "font")]
+    paraphase_font::register_all(&mut registry);
+
+    #[cfg(feature = "geo")]
+    paraphase_geo::register_all(&mut registry);
+
+    #[cfg(feature = "pki")]
+    paraphase_pki::register_all(&mut registry);
+
+    #[cfg(feature = "subtitle")]
+    paraphase_subtitle::register_all(&mut registry);
+
+    #[cfg(feature = "color")]
+    paraphase_color::register_all(&mut registry);
+
     // Apply config defaults, CLI flags override
     let memory_limit = cli.memory_limit.or(config.defaults.memory_limit);
     let verbose = cli.verbose || config.defaults.verbose;
@@ -1586,6 +1604,7 @@ fn mime_to_format(mime: &str) -> Option<String> {
         "video/x-msvideo" => Some("avi".into()),
         "video/quicktime" => Some("mov".into()),
         // Data formats
+        "image/svg+xml" => Some("svg".into()),
         "application/json" => Some("json".into()),
         "application/xml" | "text/xml" => Some("xml".into()),
         "application/x-yaml" | "text/yaml" => Some("yaml".into()),
@@ -1646,6 +1665,27 @@ fn detect_format(path: &str) -> Option<String> {
         "mp3" => Some("mp3".into()),
         "ogg" | "oga" => Some("ogg".into()),
         "aac" | "m4a" => Some("aac".into()),
+        // Vector formats
+        "svg" | "svgz" => Some("svg".into()),
+        // Font formats
+        "ttf" => Some("ttf".into()),
+        "otf" => Some("otf".into()),
+        "woff" => Some("woff".into()),
+        "woff2" => Some("woff2".into()),
+        // Geo formats
+        "gpx" => Some("gpx".into()),
+        "geojson" => Some("geojson".into()),
+        // PKI formats
+        "pem" | "crt" | "cer" | "key" => Some("pem".into()),
+        "der" => Some("der".into()),
+        // Subtitle formats
+        "srt" => Some("srt".into()),
+        "vtt" => Some("vtt".into()),
+        "sbv" => Some("sbv".into()),
+        // Color palette formats
+        "gpl" => Some("gpl".into()),
+        "aco" => Some("aco".into()),
+        "ase" => Some("ase".into()),
         _ => None,
     }
 }
