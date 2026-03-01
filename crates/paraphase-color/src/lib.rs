@@ -29,6 +29,10 @@ pub fn register_all(registry: &mut Registry) {
         registry.register(AseToJson);
         registry.register(JsonToAse);
     }
+    #[cfg(feature = "cssvar")]
+    {
+        registry.register(CssVarToJson);
+    }
 }
 
 // ============================================
@@ -875,3 +879,154 @@ mod tests {
         assert_eq!(parsed.colors[0].name, Some("Red".to_string()));
     }
 }
+
+// ============================================
+// CSS custom color properties
+// ============================================
+
+#[cfg(feature = "cssvar")]
+mod cssvar_impl {
+    use super::*;
+
+    /// Extract CSS custom color properties (--var: #rrggbb) to a JSON palette.
+    ///
+    /// Supports #rrggbb, #rgb, and rgb(r, g, b) value syntax.
+    /// Only variables whose values resolve to a color are included.
+    pub struct CssVarToJson;
+
+    impl Converter for CssVarToJson {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "color.cssvar-to-json",
+                    PropertyPattern::new().eq("format", "css"),
+                    PropertyPattern::new().eq("format", "json"),
+                )
+                .description("Extract CSS custom color properties to JSON palette")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let text = std::str::from_utf8(input)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid UTF-8: {}", e)))?;
+
+            let palette = parse_css_vars(text);
+            let json = palette.to_json();
+            let output = serde_json::to_vec_pretty(&json)
+                .map_err(|e| ConvertError::Failed(format!("JSON serialization failed: {}", e)))?;
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "json".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+
+    pub fn parse_css_vars(css: &str) -> Palette {
+        let mut palette = Palette::default();
+
+        for line in css.lines() {
+            let line = line.trim();
+            // Match custom property declarations: --name: value;
+            let Some(rest) = line.strip_prefix("--") else {
+                continue;
+            };
+            let Some(colon) = rest.find(':') else {
+                continue;
+            };
+            let var_name = rest[..colon].trim();
+            let value_part = rest[colon + 1..].trim().trim_end_matches(';').trim();
+
+            if let Some(color) = parse_css_color(value_part) {
+                palette.colors.push(Color {
+                    name: Some(var_name.to_string()),
+                    r: color.0,
+                    g: color.1,
+                    b: color.2,
+                });
+            }
+        }
+
+        palette
+    }
+
+    /// Parse a CSS color value to (r, g, b). Returns None if not recognized.
+    fn parse_css_color(value: &str) -> Option<(u8, u8, u8)> {
+        let value = value.trim();
+        if let Some(hex) = value.strip_prefix('#') {
+            return parse_hex_color(hex);
+        }
+        if let Some(inner) = value
+            .strip_prefix("rgb(")
+            .or_else(|| value.strip_prefix("RGB("))
+        {
+            let inner = inner.trim_end_matches(')');
+            return parse_rgb_fn(inner);
+        }
+        None
+    }
+
+    fn parse_hex_color(hex: &str) -> Option<(u8, u8, u8)> {
+        match hex.len() {
+            6 => {
+                let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+                Some((r, g, b))
+            }
+            3 => {
+                let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 17;
+                let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 17;
+                let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 17;
+                Some((r, g, b))
+            }
+            _ => None,
+        }
+    }
+
+    fn parse_rgb_fn(inner: &str) -> Option<(u8, u8, u8)> {
+        let parts: Vec<&str> = inner.split(',').collect();
+        if parts.len() < 3 {
+            return None;
+        }
+        let r = parts[0].trim().parse::<u8>().ok()?;
+        let g = parts[1].trim().parse::<u8>().ok()?;
+        let b = parts[2].trim().parse::<u8>().ok()?;
+        Some((r, g, b))
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_parse_css_vars() {
+            let css = r#"
+                :root {
+                    --color-primary: #ff6600;
+                    --color-secondary: #336699;
+                    --color-accent: rgb(255, 0, 128);
+                    --color-short: #f60;
+                    --font-size: 16px;
+                    --not-a-color: bold;
+                }
+            "#;
+            let palette = parse_css_vars(css);
+            assert_eq!(palette.colors.len(), 4);
+            assert_eq!(palette.colors[0].name, Some("color-primary".to_string()));
+            assert_eq!(palette.colors[0].r, 0xff);
+            assert_eq!(palette.colors[0].g, 0x66);
+            assert_eq!(palette.colors[0].b, 0x00);
+            assert_eq!(palette.colors[2].r, 255);
+            assert_eq!(palette.colors[2].g, 0);
+            assert_eq!(palette.colors[2].b, 128);
+            // #f60 → #ff6600
+            assert_eq!(palette.colors[3].r, 0xff);
+            assert_eq!(palette.colors[3].g, 0x66);
+            assert_eq!(palette.colors[3].b, 0x00);
+        }
+    }
+}
+
+#[cfg(feature = "cssvar")]
+pub use cssvar_impl::CssVarToJson;

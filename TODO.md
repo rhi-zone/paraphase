@@ -242,7 +242,7 @@ See their dedicated sections below for full breakdown.
 - **ICS/vCard** — `icalendar` crate unvetted; roll our own for common subset
 - **KML** — XML; `quick-xml` handles it; GIS-aware transform needed
 - **Shapefile** — `shapefile` crate; multi-file maps to `ConvertOutput::Multi`
-- **WKT/WKB** — `wkt` crate from `geo` ecosystem; very small scope
+- **WKT** — done; WKB deferred (needs separate crate)
 - **JWK** — JSON Web Key; roll-our-own or `jwt-simple`
 - **PKCS#12** — `p12` crate (RustCrypto); security-sensitive but bounded API
 - **ASS/SSA → SRT** — Pure Rust, lossy; parser ~200 lines
@@ -323,7 +323,7 @@ RFC parsing has edge cases but the common subset is tractable:
 
 - [x] **GPX** - Tier 1; `gpx` crate; GPS tracks/waypoints, converts naturally to/from GeoJSON
 
-- [ ] **WKT/WKB** - Well-Known Text/Binary; `wkt` crate from `geo` ecosystem; small scope
+- [x] **WKT** - Well-Known Text; `wkt` 0.14 crate; WKT ↔ GeoJSON (WKB not implemented — needs different crate)
 - [ ] **KML** - Keyhole Markup Language; Google Earth format; XML via `quick-xml`
 - [ ] **Shapefile** - `.shp/.dbf/.shx`; `shapefile` crate; multi-file maps to `ConvertOutput::Multi`
 
@@ -332,7 +332,7 @@ RFC parsing has edge cases but the common subset is tractable:
 ## Additional Serde Formats (paraphase-serde)
 
 - [ ] **KDL** - `kdl` crate v6; fits the SerdeConverter pattern; config/data language
-- [ ] **TSV** - tab-separated values; trivial extension of existing CSV converter
+- [x] **TSV** - tab-separated values; implemented under `csv` feature in paraphase-serde
 - [ ] **HCL** - HashiCorp Configuration Language; `hcl-rs` crate; Terraform/infra configs
 - [ ] **Hjson** - Human JSON; `deser-hjson` crate; previously attempted, needs compat check
 - [ ] **Java .properties** - roll our own; simple key=value with `\` escapes
@@ -355,7 +355,7 @@ RFC parsing has edge cases but the common subset is tractable:
 - [x] **GPL** - Tier 2 (roll our own); GIMP Palette; plain text, ~30 lines
 - [x] **ACO** - Tier 2 (roll our own); Photoshop Color Swatches; binary, simple structure
 - [x] **ASE** - Tier 2 (roll our own); Adobe Swatch Exchange; binary with known structure
-- [ ] **CSS custom properties** - extract color variables from CSS; simple text parsing, extend paraphase-color
+- [x] **CSS custom properties** - extract color variables from CSS; `cssvar` feature in paraphase-color; supports #rrggbb, #rgb, rgb()
 
 ---
 
