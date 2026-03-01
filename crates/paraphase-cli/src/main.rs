@@ -455,6 +455,9 @@ fn main() -> Result<()> {
     #[cfg(feature = "color")]
     paraphase_color::register_all(&mut registry);
 
+    #[cfg(feature = "threed")]
+    paraphase_3d::register_all(&mut registry);
+
     // Apply config defaults, CLI flags override
     let memory_limit = cli.memory_limit.or(config.defaults.memory_limit);
     let verbose = cli.verbose || config.defaults.verbose;

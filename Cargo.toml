@@ -22,6 +22,7 @@ paraphase-geo = { path = "crates/paraphase-geo" }
 paraphase-pki = { path = "crates/paraphase-pki" }
 paraphase-subtitle = { path = "crates/paraphase-subtitle" }
 paraphase-color = { path = "crates/paraphase-color" }
+paraphase-3d = { path = "crates/paraphase-3d" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

@@ -1,0 +1,22 @@
+[package]
+name = "paraphase-3d"
+description = "3D format converters for Paraphase (STL, OBJ, PLY, glTF)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["stl"]
+stl = ["dep:stl_io"]
+obj = ["dep:tobj"]
+ply = ["dep:ply-rs"]
+gltf = ["dep:gltf"]
+all = ["stl", "obj", "ply", "gltf"]
+
+[dependencies]
+paraphase-core.workspace = true
+stl_io = { version = "0.8", optional = true }
+tobj = { version = "4", optional = true }
+ply-rs = { version = "0.1", optional = true }
+gltf = { version = "1", optional = true }
