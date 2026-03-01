@@ -16,6 +16,12 @@ paraphase-serde = { path = "crates/paraphase-serde" }
 paraphase-image = { path = "crates/paraphase-image" }
 paraphase-video = { path = "crates/paraphase-video" }
 paraphase-audio = { path = "crates/paraphase-audio" }
+paraphase-vector = { path = "crates/paraphase-vector" }
+paraphase-font = { path = "crates/paraphase-font" }
+paraphase-geo = { path = "crates/paraphase-geo" }
+paraphase-pki = { path = "crates/paraphase-pki" }
+paraphase-subtitle = { path = "crates/paraphase-subtitle" }
+paraphase-color = { path = "crates/paraphase-color" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

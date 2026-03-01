@@ -78,6 +78,16 @@ Do not:
 - Use `--no-verify` - fix the issue or fix the hook
 - Assume tools are missing - check if `nix develop` is available for the right environment
 
+## Hand-Rolled Format Crates
+
+When rolling our own parser/writer for a format, the implementation goes in a **standalone
+crate** with no Paraphase dependency (e.g. `amazon-ion`, `woff`, `subtitle-formats`).
+The `paraphase-*` crate is a thin wrapper that registers converters with the registry.
+
+Other projects (e.g. rescribe) depend on the standalone crate directly — not on Paraphase.
+Existing hand-rolled crates (`paraphase-subtitle`, `paraphase-color`, `paraphase-font`)
+need to be split into standalone + wrapper pairs before shipping as libraries.
+
 ## Design Principles
 
 **Unify, don't multiply.** One interface for multiple cases > separate interfaces. Plugin systems > hardcoded switches. When user says "WTF is X" - ask: naming issue or design issue?

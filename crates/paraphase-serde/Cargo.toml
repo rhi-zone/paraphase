@@ -140,6 +140,9 @@ zip = ["dep:zip"]
 # Spreadsheet reading (XLSX, ODS, XLS, XLSB)
 spreadsheet = ["dep:calamine", "dep:serde_json"]
 
+# Spreadsheet writing (XLSX)
+xlsxwrite = ["dep:rust_xlsxwriter", "dep:serde_json"]
+
 # ============================================
 # SCHEMA-BASED FORMATS (self-describing)
 # ============================================
@@ -161,6 +164,7 @@ all = [
     "ini", "charsets", "markdown", "html2text",
     "tar", "zip",
     "spreadsheet",
+    "xlsxwrite",
     "avro",
     "parquet",
 ]
@@ -215,6 +219,7 @@ zip = { version = "2.2", optional = true }
 
 # --- Spreadsheet formats ---
 calamine = { version = "0.32", optional = true }
+rust_xlsxwriter = { version = "0.81", optional = true }
 
 # --- Schema-based formats ---
 apache-avro = { version = "0.21", optional = true }

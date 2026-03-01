@@ -1,0 +1,19 @@
+[package]
+name = "paraphase-font"
+description = "Font format converters for Paraphase (WOFF1 via pure Rust)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["woff"]
+
+# TTF/OTF ↔ WOFF1 (pure Rust with flate2)
+woff = ["dep:flate2"]
+
+all = ["woff"]
+
+[dependencies]
+paraphase-core.workspace = true
+flate2 = { version = "1.1", optional = true }

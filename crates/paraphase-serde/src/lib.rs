@@ -149,6 +149,19 @@ pub fn register_all(registry: &mut Registry) {
         registry.register(SpreadsheetToJson);
     }
 
+    // Register CSV converters
+    #[cfg(feature = "csv")]
+    {
+        registry.register(CsvToJson);
+        registry.register(JsonToCsv);
+    }
+
+    // Register XLSX write converter
+    #[cfg(feature = "xlsxwrite")]
+    {
+        registry.register(JsonToXlsx);
+    }
+
     // Register schema-based format converters
     #[cfg(feature = "avro")]
     {
@@ -1648,6 +1661,260 @@ mod parquet_impl {
 #[cfg(feature = "parquet")]
 pub use parquet_impl::ParquetToJson;
 
+// ============================================
+// CSV CONVERTERS
+// ============================================
+
+#[cfg(feature = "csv")]
+mod csv_impl {
+    use super::*;
+
+    /// Parse CSV to JSON array of objects (first row = headers).
+    pub struct CsvToJson;
+
+    impl Converter for CsvToJson {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "serde.csv-to-json",
+                    PropertyPattern::new().eq("format", "csv"),
+                    PropertyPattern::new().eq("format", "json"),
+                )
+                .description("Parse CSV to JSON array of objects (first row = headers)")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let mut reader = csv::Reader::from_reader(input);
+            let headers = reader
+                .headers()
+                .map_err(|e| ConvertError::InvalidInput(format!("CSV header error: {}", e)))?
+                .clone();
+
+            let mut records = Vec::new();
+            for result in reader.records() {
+                let record = result
+                    .map_err(|e| ConvertError::InvalidInput(format!("CSV parse error: {}", e)))?;
+                let obj: serde_json::Map<String, serde_json::Value> = headers
+                    .iter()
+                    .zip(record.iter())
+                    .map(|(h, v)| (h.to_string(), serde_json::Value::String(v.to_string())))
+                    .collect();
+                records.push(serde_json::Value::Object(obj));
+            }
+
+            let output = serde_json::to_vec_pretty(&serde_json::Value::Array(records))
+                .map_err(|e| ConvertError::Failed(format!("JSON serialization failed: {}", e)))?;
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "json".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+
+    /// Serialize JSON array of flat objects to CSV.
+    pub struct JsonToCsv;
+
+    impl Converter for JsonToCsv {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "serde.json-to-csv",
+                    PropertyPattern::new().eq("format", "json"),
+                    PropertyPattern::new().eq("format", "csv"),
+                )
+                .description("Serialize JSON array of flat objects to CSV")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let value: serde_json::Value = serde_json::from_slice(input)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid JSON: {}", e)))?;
+
+            let array = value.as_array().ok_or_else(|| {
+                ConvertError::InvalidInput("JSON must be an array of objects".into())
+            })?;
+
+            if array.is_empty() {
+                let mut out_props = props.clone();
+                out_props.insert("format".into(), "csv".into());
+                return Ok(ConvertOutput::Single(Vec::new(), out_props));
+            }
+
+            // Collect all keys across all objects (in insertion order)
+            let mut keys: Vec<String> = Vec::new();
+            for item in array {
+                if let Some(obj) = item.as_object() {
+                    for key in obj.keys() {
+                        if !keys.contains(key) {
+                            keys.push(key.clone());
+                        }
+                    }
+                }
+            }
+
+            let mut output = Vec::new();
+            {
+                let mut writer = csv::Writer::from_writer(&mut output);
+
+                // Write header row
+                writer
+                    .write_record(&keys)
+                    .map_err(|e| ConvertError::Failed(format!("CSV write error: {}", e)))?;
+
+                // Write data rows
+                for item in array {
+                    let empty = serde_json::Value::Null;
+                    let obj = item.as_object();
+                    let row: Vec<String> = keys
+                        .iter()
+                        .map(|k| {
+                            let v = obj.and_then(|o| o.get(k)).unwrap_or(&empty);
+                            match v {
+                                serde_json::Value::String(s) => s.clone(),
+                                serde_json::Value::Null => String::new(),
+                                other => other.to_string(),
+                            }
+                        })
+                        .collect();
+                    writer
+                        .write_record(&row)
+                        .map_err(|e| ConvertError::Failed(format!("CSV write error: {}", e)))?;
+                }
+
+                writer
+                    .flush()
+                    .map_err(|e| ConvertError::Failed(format!("CSV flush error: {}", e)))?;
+            }
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "csv".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+}
+
+#[cfg(feature = "csv")]
+pub use csv_impl::{CsvToJson, JsonToCsv};
+
+// ============================================
+// XLSX WRITE
+// ============================================
+
+#[cfg(feature = "xlsxwrite")]
+mod xlsxwrite_impl {
+    use super::*;
+
+    /// Write JSON array of objects to XLSX spreadsheet.
+    pub struct JsonToXlsx;
+
+    impl Converter for JsonToXlsx {
+        fn decl(&self) -> &ConverterDecl {
+            static DECL: std::sync::OnceLock<ConverterDecl> = std::sync::OnceLock::new();
+            DECL.get_or_init(|| {
+                ConverterDecl::simple(
+                    "serde.json-to-xlsx",
+                    PropertyPattern::new().eq("format", "json"),
+                    PropertyPattern::new().eq("format", "xlsx"),
+                )
+                .description("Write JSON array of objects to XLSX spreadsheet")
+            })
+        }
+
+        fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput, ConvertError> {
+            let value: serde_json::Value = serde_json::from_slice(input)
+                .map_err(|e| ConvertError::InvalidInput(format!("Invalid JSON: {}", e)))?;
+
+            let array = value.as_array().ok_or_else(|| {
+                ConvertError::InvalidInput("JSON must be an array of objects".into())
+            })?;
+
+            let mut workbook = rust_xlsxwriter::Workbook::new();
+            let worksheet = workbook.add_worksheet();
+
+            if !array.is_empty() {
+                // Collect headers (all keys across all objects, in insertion order)
+                let mut headers: Vec<String> = Vec::new();
+                for item in array {
+                    if let Some(obj) = item.as_object() {
+                        for key in obj.keys() {
+                            if !headers.contains(key) {
+                                headers.push(key.clone());
+                            }
+                        }
+                    }
+                }
+
+                // Write header row
+                for (col, header) in headers.iter().enumerate() {
+                    worksheet
+                        .write_string(0, col as u16, header)
+                        .map_err(|e| ConvertError::Failed(format!("XLSX write error: {}", e)))?;
+                }
+
+                // Write data rows
+                for (row_idx, item) in array.iter().enumerate() {
+                    let empty = serde_json::Value::Null;
+                    let obj = item.as_object();
+                    for (col_idx, key) in headers.iter().enumerate() {
+                        let v = obj.and_then(|o| o.get(key)).unwrap_or(&empty);
+                        match v {
+                            serde_json::Value::String(s) => {
+                                worksheet
+                                    .write_string((row_idx + 1) as u32, col_idx as u16, s)
+                                    .map_err(|e| {
+                                        ConvertError::Failed(format!("XLSX write error: {}", e))
+                                    })?;
+                            }
+                            serde_json::Value::Number(n) => {
+                                if let Some(f) = n.as_f64() {
+                                    worksheet
+                                        .write_number((row_idx + 1) as u32, col_idx as u16, f)
+                                        .map_err(|e| {
+                                            ConvertError::Failed(format!("XLSX write error: {}", e))
+                                        })?;
+                                }
+                            }
+                            serde_json::Value::Bool(b) => {
+                                worksheet
+                                    .write_boolean((row_idx + 1) as u32, col_idx as u16, *b)
+                                    .map_err(|e| {
+                                        ConvertError::Failed(format!("XLSX write error: {}", e))
+                                    })?;
+                            }
+                            serde_json::Value::Null => {}
+                            other => {
+                                worksheet
+                                    .write_string(
+                                        (row_idx + 1) as u32,
+                                        col_idx as u16,
+                                        other.to_string(),
+                                    )
+                                    .map_err(|e| {
+                                        ConvertError::Failed(format!("XLSX write error: {}", e))
+                                    })?;
+                            }
+                        }
+                    }
+                }
+            }
+
+            let output = workbook
+                .save_to_buffer()
+                .map_err(|e| ConvertError::Failed(format!("XLSX save failed: {}", e)))?;
+
+            let mut out_props = props.clone();
+            out_props.insert("format".into(), "xlsx".into());
+            Ok(ConvertOutput::Single(output, out_props))
+        }
+    }
+}
+
+#[cfg(feature = "xlsxwrite")]
+pub use xlsxwrite_impl::JsonToXlsx;
+
 /// Deserialize bytes to a serde Value.
 fn deserialize(format: &str, data: &[u8]) -> Result<serde_json::Value, ConvertError> {
     match format {
@@ -2014,6 +2281,18 @@ mod tests {
         #[cfg(feature = "parquet")]
         {
             expected += 1;
+        }
+
+        // Plus CSV converters
+        #[cfg(feature = "csv")]
+        {
+            expected += 2; // CsvToJson + JsonToCsv
+        }
+
+        // Plus XLSX write converter
+        #[cfg(feature = "xlsxwrite")]
+        {
+            expected += 1; // JsonToXlsx
         }
 
         assert_eq!(registry.len(), expected);

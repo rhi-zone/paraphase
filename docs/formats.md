@@ -15,10 +15,24 @@ All serde formats use `serde_json::Value` as an intermediate representation, ena
 | TOML | `toml` | .toml | Default enabled |
 | RON | `ron` | .ron | Rust Object Notation |
 | JSON5 | `json5` | .json5 | JSON with comments, trailing commas |
+| Hjson | `hjson` | .hjson | Human JSON; comments + unquoted strings |
+| KDL | `kdl` | .kdl | KDL Document Language |
+| HCL | `hcl` | .hcl, .tf | HashiCorp Configuration Language |
 | XML | `xml` | .xml | Via quick-xml |
+| TSV | `tsv` | .tsv | Tab-separated values |
+| INI | `ini` | .ini | Key-value config |
+| Java properties | `properties` | .properties | Java-style key=value |
+| .env | `dotenv` | .env | Environment variable files |
 | S-expressions | `lexpr` | .lisp, .sexp | Lisp-style |
 | URL-encoded | `urlencoded` | - | Form data |
 | Query strings | `qs` | - | Nested query params |
+
+### Planned: amazon-ion + paraphase-ion
+
+Amazon Ion (JSON superset from AWS) — standalone `amazon-ion` crate (useful beyond Paraphase),
+roll our own from the public spec. Binary + text, ~3,500 LOC, well-specified. Not waiting for
+`ion-rs` (unstable API, ~1yr of unreleased commits). `paraphase-ion` wraps `amazon-ion` into
+the converter registry. Rescribe depends on `amazon-ion` for KFX support.
 
 ### Binary Formats
 
@@ -40,7 +54,8 @@ All serde formats use `serde_json::Value` as an intermediate representation, ena
 # Cargo.toml for paraphase-serde
 [features]
 default = ["json", "yaml", "toml"]
-all = ["json", "yaml", "toml", "ron", "json5", "xml", "lexpr",
+all = ["json", "yaml", "toml", "ron", "json5", "hjson", "kdl", "hcl",
+       "xml", "tsv", "ini", "properties", "dotenv", "lexpr",
        "urlencoded", "qs", "msgpack", "cbor", "bincode", "postcard",
        "bson", "flexbuffers", "bencode", "pickle", "plist"]
 ```
@@ -146,6 +161,135 @@ paraphase convert photo.png branded.png --watermark logo.png \
 - `position`: Where to place the watermark (uses gravity presets above)
 - `opacity`: Watermark transparency (0.0-1.0, default 1.0)
 - `margin`: Pixels from edge (default 0)
+
+## CSV / XLSX (paraphase-serde)
+
+CSV and XLSX write are handled by `paraphase-serde` with dedicated features.
+
+| Converter | ID | Feature | Description |
+|-----------|-----|---------|-------------|
+| CSV → JSON | `serde.csv-to-json` | `csv` | Parse CSV to JSON array of objects (first row = headers) |
+| JSON → CSV | `serde.json-to-csv` | `csv` | Serialize JSON array of flat objects to CSV |
+| JSON → XLSX | `serde.json-to-xlsx` | `xlsxwrite` | Write JSON array of objects to XLSX spreadsheet |
+
+```bash
+paraphase convert data.csv data.json
+paraphase convert data.json out.csv
+paraphase convert data.json out.xlsx
+```
+
+## Vector Graphics (paraphase-vector)
+
+SVG rasterization via `resvg`/`tiny-skia`.
+
+| Converter | ID | Feature | Description |
+|-----------|-----|---------|-------------|
+| SVG → PNG | `vector.svg-to-png` | `svg` | Render SVG to PNG |
+| SVG → JPEG | `vector.svg-to-jpeg` | `svg` | Render SVG to JPEG |
+| SVG → WebP | `vector.svg-to-webp` | `svg` | Render SVG to WebP |
+
+**Input properties:** optional `width`, `height` to override render resolution.
+
+```bash
+paraphase convert logo.svg logo.png
+paraphase convert diagram.svg diagram.jpg
+```
+
+## Font Formats (paraphase-font)
+
+TTF/OTF ↔ WOFF1 conversion in pure Rust using flate2.
+
+| Converter | ID | Feature | Description |
+|-----------|-----|---------|-------------|
+| TTF → WOFF | `font.ttf-to-woff` | `woff` | Wrap TTF in WOFF1 container |
+| OTF → WOFF | `font.otf-to-woff` | `woff` | Wrap OTF in WOFF1 container |
+| WOFF → TTF | `font.woff-to-ttf` | `woff` | Extract TTF from WOFF1 container |
+
+```bash
+paraphase convert font.ttf font.woff
+paraphase convert font.otf font.woff
+paraphase convert font.woff font.ttf
+```
+
+## Geospatial Formats (paraphase-geo)
+
+GPX ↔ GeoJSON via the `gpx` crate.
+
+| Converter | ID | Feature | Description |
+|-----------|-----|---------|-------------|
+| GPX → GeoJSON | `geo.gpx-to-geojson` | `gpx` | Convert GPX tracks/waypoints to GeoJSON FeatureCollection |
+| GeoJSON → GPX | `geo.geojson-to-gpx` | `gpx` | Convert GeoJSON to GPX |
+
+```bash
+paraphase convert tracks.gpx tracks.geojson
+paraphase convert route.geojson route.gpx
+```
+
+## PKI / Certificate Formats (paraphase-pki)
+
+PEM ↔ DER via `pem-rfc7468`.
+
+| Converter | ID | Feature | Description |
+|-----------|-----|---------|-------------|
+| PEM → DER | `pki.pem-to-der` | `pem` | Decode PEM to raw DER bytes |
+| DER → PEM | `pki.der-to-pem` | `pem` | Encode DER bytes as PEM |
+
+**Properties:** `pem_label` — the PEM label string (e.g., "CERTIFICATE", "PRIVATE KEY"). Preserved on decode, required on encode (default: "CERTIFICATE").
+
+```bash
+paraphase convert cert.pem cert.der
+paraphase convert cert.der cert.pem
+```
+
+## Subtitle Formats (paraphase-subtitle)
+
+Pure Rust SRT/VTT/SBV conversion — no external dependencies.
+
+| Converter | ID | Feature | Description |
+|-----------|-----|---------|-------------|
+| SRT → VTT | `subtitle.srt-to-vtt` | `srt` + `vtt` | SubRip to WebVTT |
+| VTT → SRT | `subtitle.vtt-to-srt` | `srt` + `vtt` | WebVTT to SubRip |
+| SRT → SBV | `subtitle.srt-to-sbv` | `srt` + `sbv` | SubRip to SubViewer |
+| SBV → SRT | `subtitle.sbv-to-srt` | `srt` + `sbv` | SubViewer to SubRip |
+| VTT → SBV | `subtitle.vtt-to-sbv` | `vtt` + `sbv` | WebVTT to SubViewer |
+| SBV → VTT | `subtitle.sbv-to-vtt` | `vtt` + `sbv` | SubViewer to WebVTT |
+
+```bash
+paraphase convert subtitles.srt subtitles.vtt
+paraphase convert subtitles.vtt subtitles.srt
+paraphase convert subtitles.sbv subtitles.vtt
+```
+
+## Color Palette Formats (paraphase-color)
+
+Pure Rust GPL/ACO/ASE ↔ JSON conversion — no external dependencies.
+
+| Converter | ID | Feature | Description |
+|-----------|-----|---------|-------------|
+| GPL → JSON | `color.gpl-to-json` | `gpl` | Parse GIMP Palette to JSON |
+| JSON → GPL | `color.json-to-gpl` | `gpl` | Serialize JSON palette to GIMP Palette |
+| ACO → JSON | `color.aco-to-json` | `aco` | Parse Photoshop Color Swatches to JSON |
+| JSON → ACO | `color.json-to-aco` | `aco` | Serialize JSON palette to ACO |
+| ASE → JSON | `color.ase-to-json` | `ase` | Parse Adobe Swatch Exchange to JSON |
+| JSON → ASE | `color.json-to-ase` | `ase` | Serialize JSON palette to ASE |
+
+**JSON palette format:**
+```json
+{
+  "name": "My Palette",
+  "colors": [
+    { "r": 255, "g": 0, "b": 0, "name": "Red" },
+    { "r": 0, "g": 128, "b": 0, "name": "Green" }
+  ]
+}
+```
+
+```bash
+paraphase convert palette.gpl palette.json
+paraphase convert palette.json palette.gpl
+paraphase convert swatches.aco swatches.json
+paraphase convert palette.json palette.ase
+```
 
 ## Audio Formats (paraphase-audio)
 

@@ -1,0 +1,21 @@
+[package]
+name = "paraphase-vector"
+description = "Vector graphics converters for Paraphase (SVG rasterization)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[features]
+default = ["svg"]
+
+# SVG rasterization to PNG/JPEG/WebP via resvg
+svg = ["dep:resvg", "dep:tiny-skia", "dep:image"]
+
+all = ["svg"]
+
+[dependencies]
+paraphase-core.workspace = true
+resvg = { version = "0.44", optional = true }
+tiny-skia = { version = "0.11", optional = true }
+image = { version = "0.25", default-features = false, features = ["jpeg", "webp"], optional = true }

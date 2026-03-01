@@ -18,12 +18,24 @@ serde = ["dep:paraphase-serde"]
 image = ["dep:paraphase-image", "dep:image"]
 video = ["dep:paraphase-video"]
 audio = ["dep:paraphase-audio"]
+vector = ["dep:paraphase-vector"]
+font = ["dep:paraphase-font"]
+geo = ["dep:paraphase-geo"]
+pki = ["dep:paraphase-pki"]
+subtitle = ["dep:paraphase-subtitle"]
+color = ["dep:paraphase-color"]
 
 # Enable all formats in each backend
 serde-all = ["serde", "paraphase-serde/all"]
 image-all = ["image", "paraphase-image/all"]
 video-all = ["video", "paraphase-video/all"]
 audio-all = ["audio", "paraphase-audio/all"]
+vector-all = ["vector", "paraphase-vector/all"]
+font-all = ["font", "paraphase-font/all"]
+geo-all = ["geo", "paraphase-geo/all"]
+pki-all = ["pki", "paraphase-pki/all"]
+subtitle-all = ["subtitle", "paraphase-subtitle/all"]
+color-all = ["color", "paraphase-color/all"]
 
 # Parallel execution (batch processing)
 parallel = ["paraphase-core/parallel"]
@@ -32,7 +44,11 @@ parallel = ["paraphase-core/parallel"]
 wick = ["dep:wick-core", "dep:wick-scalar"]
 
 # Everything (video excluded from default, requires FFmpeg)
-all = ["serde-all", "image-all", "video-all", "audio-all", "parallel", "wick"]
+all = [
+    "serde-all", "image-all", "video-all", "audio-all",
+    "vector-all", "font-all", "geo-all", "pki-all", "subtitle-all", "color-all",
+    "parallel", "wick",
+]
 
 [dependencies]
 paraphase-core.workspace = true
@@ -40,6 +56,12 @@ paraphase-serde = { workspace = true, optional = true }
 paraphase-image = { workspace = true, optional = true }
 paraphase-video = { workspace = true, optional = true }
 paraphase-audio = { workspace = true, optional = true }
+paraphase-vector = { workspace = true, optional = true }
+paraphase-font = { workspace = true, optional = true }
+paraphase-geo = { workspace = true, optional = true }
+paraphase-pki = { workspace = true, optional = true }
+paraphase-subtitle = { workspace = true, optional = true }
+paraphase-color = { workspace = true, optional = true }
 clap = { version = "4", features = ["derive"] }
 clap_complete = "4"
 clap_mangen = "0.2"
