@@ -331,7 +331,7 @@ RFC parsing has edge cases but the common subset is tractable:
 
 ## Additional Serde Formats (paraphase-serde)
 
-- [ ] **KDL** - `kdl` crate v6; fits the SerdeConverter pattern; config/data language
+- [ ] **KDL** - `kdl` crate v6; deferred pending design — KDL nodes have args + props + children simultaneously, which has no clean JSON mapping; needs a representation convention decision before implementing
 - [x] **TSV** - tab-separated values; implemented under `csv` feature in paraphase-serde
 - [ ] **HCL** - HashiCorp Configuration Language; `hcl-rs` crate; Terraform/infra configs
 - [ ] **Hjson** - Human JSON; `deser-hjson` crate; previously attempted, needs compat check
