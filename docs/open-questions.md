@@ -52,19 +52,20 @@ Two distinct capabilities, both needed:
 
 ### Which formats can stream?
 
-| Streamable | Not streamable (need full input) |
-|------------|----------------------------------|
-| NDJSON, CSV, TSV | JSON (tree), YAML (anchors/aliases) |
-| SRT, VTT, SBV (cue-at-a-time) | TOML (table merging) |
-| Audio frames (WAV, PCM) | Parquet (footer metadata) |
-| Line-based text (Base64, Hex) | XLSX/ODS (zip archive) |
-| Tar (sequential archive) | Avro (schema in header, blocks are self-contained — partially streamable) |
-| Compression (gzip, zstd, brotli) | PNG/JPEG (need full decode for pixel access) |
-| PEM (record-at-a-time) | |
+| Level | Streamable | Not streamable (need full input) |
+|-------|------------|----------------------------------|
+| **Token-level** (serde transcode) | JSON, YAML*, CBOR, MessagePack | TOML (table merging requires full parse) |
+| **Record-level** (line/row/cue) | NDJSON, CSV, TSV, SRT, VTT, SBV | Parquet (footer metadata), XLSX/ODS (zip) |
+| **Chunk-level** (byte blocks) | Audio frames (WAV, PCM), compression (gzip, zstd, brotli), tar, PEM, Base64, Hex | PNG/JPEG (need full decode), Avro (partially — blocks are self-contained but schema is in header) |
 
-Note: serde's `Deserializer`/`Serializer` traits support streaming from `Read`/to
-`Write` for formats like JSON and CSV. But our trait boundary forces full buffering
-regardless. Even serde-json can stream *tokens* from a `Read` — we just don't let it.
+*\*YAML anchors/aliases require the anchor to have been seen already, but sequential
+documents and simple structures stream fine.*
+
+**Key insight:** serde's `Deserializer`/`Serializer` traits already support streaming
+from `Read`/to `Write`. `serde_transcode` can bridge any Deserializer→Serializer
+token-by-token without materializing an intermediate Rust value. This means JSON→YAML,
+JSON→CBOR, etc. can convert in memory proportional to *nesting depth*, not document size.
+Our trait boundary (`&[u8]` → `Vec<u8>`) is the only thing preventing this today.
 
 ### Open design questions
 
