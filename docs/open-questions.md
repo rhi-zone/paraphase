@@ -23,6 +23,96 @@ Unresolved design decisions for Paraphase.
 - **Planning cardinality**: Inferred from source/target, tracked through graph
 - **Expression syntax**: Deferred; use `--optimize quality|speed|size` for MVP, add Dew later if needed
 
+## Streaming / Granular Conversion
+
+**Status:** Not started — needs design before implementation.
+
+### Problem
+
+The current `Converter` trait is fully buffered:
+
+```rust
+fn convert(&self, input: &[u8], props: &Properties) -> Result<ConvertOutput>;
+```
+
+This requires materializing the entire input and output in memory. For large files
+(multi-GB NDJSON, audio streams, video frames, huge CSVs) this is a hard ceiling.
+
+### What "streaming" means here
+
+Two distinct capabilities, both needed:
+
+1. **Record-level streaming** — process one logical record at a time (NDJSON line,
+   CSV row, subtitle cue, audio frame). Input and output never fully materialize.
+   The converter sees `Read`/`Write` or an iterator of chunks.
+
+2. **Pass-through streaming** — for pipelines like `gzip | ndjson→csv | gzip`,
+   the executor connects stages with bounded buffers (like Unix pipes) rather than
+   temp files or full materialization.
+
+### Which formats can stream?
+
+| Streamable | Not streamable (need full input) |
+|------------|----------------------------------|
+| NDJSON, CSV, TSV | JSON (tree), YAML (anchors/aliases) |
+| SRT, VTT, SBV (cue-at-a-time) | TOML (table merging) |
+| Audio frames (WAV, PCM) | Parquet (footer metadata) |
+| Line-based text (Base64, Hex) | XLSX/ODS (zip archive) |
+| Tar (sequential archive) | Avro (schema in header, blocks are self-contained — partially streamable) |
+| Compression (gzip, zstd, brotli) | PNG/JPEG (need full decode for pixel access) |
+| PEM (record-at-a-time) | |
+
+Note: serde's `Deserializer`/`Serializer` traits support streaming from `Read`/to
+`Write` for formats like JSON and CSV. But our trait boundary forces full buffering
+regardless. Even serde-json can stream *tokens* from a `Read` — we just don't let it.
+
+### Open design questions
+
+1. **Trait shape** — options:
+   - Separate `StreamingConverter` trait with `Read`/`Write`
+   - Add an optional `convert_streaming()` method to existing trait
+   - Generic over input type: `convert<R: Read>(input: R, ...)` (breaks object safety)
+   - Converter returns a "capability" enum and executor dispatches accordingly
+
+2. **Declaring streamability** — converters need to advertise whether they can stream,
+   so the executor/planner can choose buffered vs streaming paths. Probably a flag on
+   `ConverterDecl` or `PortDecl`.
+
+3. **Backpressure** — if converter A produces faster than converter B consumes, who
+   blocks? Bounded channel? Async streams? This interacts with `BoundedExecutor`'s
+   memory budget.
+
+4. **Error semantics** — buffered conversion is atomic (succeed or fail). Streaming
+   can fail mid-output. Do we write partial output? Buffer then flush? This is
+   format-dependent (appending to CSV is fine; half a zip is not).
+
+5. **Pipeline composition** — a chain like `decompress | parse | transform | serialize | compress`
+   should ideally be one connected pipeline, not N intermediate buffers. How does the
+   planner fuse adjacent streaming converters?
+
+6. **Plugin ABI** — the C plugin API already has `CAMBIUM_FLAG_STREAMING` but no
+   corresponding function signature. Need to define the streaming entry point for plugins.
+
+### Why this matters
+
+Without streaming, paraphase has an effective file-size ceiling equal to available RAM.
+This is fine for config files and images, but blocks serious use for:
+- Log processing (NDJSON/CSV files can be many GB)
+- Audio/video transcoding (even short videos are large uncompressed)
+- Archive repacking (tar.gz → tar.zst without extracting to disk)
+- Batch pipelines where intermediate results shouldn't materialize
+
+### Approach
+
+Likely path: add an optional `convert_streaming` method that takes `Box<dyn Read>` /
+`Box<dyn Write>` and a `supports_streaming() -> bool` query. Executor checks the flag
+and dispatches. Non-streaming converters work unchanged — the executor buffers for them.
+This is additive; no existing converter breaks.
+
+The `StreamingExecutor` in TODO.md depends on this trait work being done first.
+
+---
+
 ## Core Model
 
 ### How do converters specify cost/quality?

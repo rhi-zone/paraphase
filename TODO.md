@@ -97,7 +97,7 @@ Implemented:
 - [x] **MemoryBudget** - semaphore-like reservation with RAII permits
 
 Future work:
-- [ ] **StreamingExecutor** - chunk-based I/O for huge files (requires converter interface changes)
+- [ ] **Streaming conversion** - chunk-based I/O for huge files; requires trait changes (`Converter` currently takes `&[u8]`), streamability declaration, and pipeline composition. See `docs/open-questions.md` § "Streaming / Granular Conversion" for full design discussion. Blocks: StreamingExecutor, large-file support, audio/video transcoding pipelines
 
 ## CLI Usability
 
