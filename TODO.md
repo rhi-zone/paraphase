@@ -174,6 +174,14 @@ Future work:
 - [ ] **Benchmarks** - criterion benchmarks for regression tracking
 - [ ] **Preserve directory structure** - mirror input tree to output tree
 
+## Ad-hoc dispatch findings (2026-05-29)
+
+From an ecosystem-wide investigation of ad-hoc dispatch architecture (2026-05-29). The recurring anti-pattern: N parallel dispatch tables keyed on a closed name/enum set where one registry/trait/visitor belongs — strongest tell is DRIFT (parallel tables disagreeing). Each finding names the general mechanism it should have been.
+
+- **P1 — `estimate_memory` matches `converter_id` prefix, bypassing `ConverterDecl.costs`.** `paraphase-core/src/executor.rs:675-688` matches `"audio."`/`"image."`/`"video."` prefixes for a memory factor. `ConverterDecl` already has a `costs: Properties` field + `fn cost()` builder (`converter.rs:98-108`) used by the planner for quality_loss/speed/size. Root cause: `Plan`/`PlanStep` carry `converter_id: String` but no `ConverterDecl` ref, and `estimate_memory` receives a `Plan` not the registry/context. SHOULD BE: a `memory_expansion` cost property read via the registry. (Sharpest bypassed-abstraction finding — the field was designed for exactly this.)
+
+- **P2 (lower priority, judgment) — `detect_format` hardcodes data-format extensions.** `workflow.rs:261-277`: workflow-serde cases (json/yaml/toml) are fine, but data-format cases (png/jpg/webp/csv) duplicate the converter registry's `PropertyPattern` inference. SHOULD BE: infer data formats from the registry's input patterns.
+
 ## Complexity Hotspots (threshold >21)
 - [ ] `crates/paraphase-cli/src/main.rs:detect_format` (44)
 - [ ] `crates/paraphase-audio/src/lib.rs:convert_to_i16` (40)
