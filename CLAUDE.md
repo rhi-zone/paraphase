@@ -2,32 +2,11 @@
 
 Behavioral rules for Claude Code in this repository.
 
-## Core Rule
+## Project Overview
 
-**Note things down immediately:**
-- Bugs/issues → fix or add to TODO.md
-- Design decisions → docs/ or code comments
-- Future work → TODO.md
-- Key insights → this file
+Type-driven route planner for format conversion.
 
-**Triggers:** User corrects you, 2+ failed attempts, "aha" moment, framework quirk discovered → document before proceeding.
-
-**Don't say these (edit first):** "Fair point", "Should have", "That should go in X" → edit the file BEFORE responding.
-
-**Conversation is not memory.** Anything said in chat evaporates at session end. If it implies future behavior change, write it to CLAUDE.md or a memory file immediately — or it will not happen.
-
-**Warning — these phrases mean something needs to be written down right now:**
-- "I won't do X again" / "I'll remember to..." / "I've learned that..."
-- "Next time I'll..." / "From now on I'll..."
-- Any acknowledgement of a recurring error without a corresponding CLAUDE.md or memory edit
-
-**When the user corrects you:** Ask what rule would have prevented this, and write it before proceeding. **"The rule exists, I just didn't follow it" is never the diagnosis** — a rule that doesn't prevent the failure it describes is incomplete; fix the rule, not your behavior.
-
-**Something unexpected is a signal, not noise.** Surprising output, anomalous numbers, files containing what they shouldn't — stop and ask why before continuing. Don't accept anomalies and move on.
-
-**Do the work properly.** When asked to analyze X, actually read X - don't synthesize from conversation. The cost of doing it right < redoing it.
-
-**If citing CLAUDE.md after failing:** The file failed its purpose. Adjust it to actually prevent the failure.
+Part of the [rhi ecosystem](https://rhi.zone).
 
 ## Behavioral Patterns
 
@@ -53,37 +32,11 @@ After editing multiple files, run the full check once — not after each edit. F
 
 **Minimize file churn.** When editing a file, read it once, plan all changes, and apply them in one pass. Avoid read-edit-build-fail-read-fix cycles by thinking through the complete change before starting.
 
-**Always commit completed work.** After tests pass, commit immediately — don't wait to be asked. When a plan has multiple phases, commit after each phase passes. Do not accumulate changes across phases. Uncommitted work is lost work.
-
 **Use `normalize view` for structural exploration:**
 ```bash
 ~/git/rhizone/normalize/target/debug/normalize view <file>    # outline with line numbers
 ~/git/rhizone/normalize/target/debug/normalize view <dir>     # directory structure
 ```
-
-## Context Management
-
-**Use subagents to protect the main context window.** For broad exploration or mechanical multi-file work, delegate to an Explore or general-purpose subagent rather than running searches inline. The subagent returns a distilled summary; raw tool output stays out of the main context.
-
-Rules of thumb:
-- Research tasks (investigating a question, surveying patterns) → subagent; don't pollute main context with exploratory noise
-- Searching >5 files or running >3 rounds of grep/read → use a subagent
-- Codebase-wide analysis (architecture, patterns, cross-file survey) → always subagent
-- Mechanical work across many files (applying the same change everywhere) → parallel subagents
-- Single targeted lookup (one file, one symbol) → inline is fine
-
-## Session Handoff
-
-Use plan mode as a handoff mechanism when:
-- A task is fully complete (committed, pushed, docs updated)
-- The session has drifted from its original purpose
-- Context has accumulated enough that a fresh start would help
-
-**For handoffs:** enter plan mode, write a short plan pointing at TODO.md, and ExitPlanMode. **Do NOT investigate first** — the session is context-heavy and about to be discarded. The fresh session investigates after approval.
-
-**For mid-session planning** on a different topic: investigating inside plan mode is fine — context isn't being thrown away.
-
-Before the handoff plan, update TODO.md and memory files with anything worth preserving.
 
 ## Commit Convention
 
@@ -99,24 +52,13 @@ Types:
 
 Scope is optional but recommended for multi-crate repos.
 
-## Negative Constraints
+## Repo-Specific Constraints
 
-Do not:
-- Announce actions ("I will now...") - just do them
-- Leave work uncommitted
-- Use interactive git commands (`git add -p`, `git add -i`, `git rebase -i`) — these block on stdin and hang in non-interactive shells; stage files by name instead
-- Create special cases - design to avoid them
-- Create legacy APIs - one API, update all callers
-- Do half measures - migrate ALL callers when adding abstraction
-- Ask permission when philosophy is clear - just do it
-- Replace content when editing lists - extend, don't replace
-- Cut corners with fallbacks - implement properly for each case
-- Mark as done prematurely - note what remains
-- Fear "over-modularization" - 100 lines is fine for a module
-- Consider time constraints - we're NOT short on time; optimize for correctness
-- Use path dependencies in Cargo.toml - causes clippy to stash changes across repos
-- Use `--no-verify` - fix the issue or fix the hook
-- Assume tools are missing - check if `nix develop` is available for the right environment
+- No special cases — design to avoid them.
+- No legacy APIs — one API, update all callers.
+- No half measures — migrate ALL callers when adding abstraction.
+- No premature done — note what remains.
+- No replacing content when editing lists — extend, don't replace.
 
 ## Hand-Rolled Format Crates
 
@@ -128,14 +70,79 @@ Other projects (e.g. rescribe) depend on the standalone crate directly — not o
 Existing hand-rolled crates (`paraphase-subtitle`, `paraphase-color`, `paraphase-font`)
 need to be split into standalone + wrapper pairs before shipping as libraries.
 
-## Design Principles
+## Dependency Gotchas
 
-**Unify, don't multiply.** One interface for multiple cases > separate interfaces. Plugin systems > hardcoded switches. When user says "WTF is X" - ask: naming issue or design issue?
+- `pem_rfc7468::LineEnding::LF` (uppercase), not `Lf`
+- `geo-types` must be a direct dep in `paraphase-geo` — `gpx` does not re-export it
+- GPL palette parser: use `split_whitespace()`, not `splitn(N, char::is_whitespace)` (the latter splits per-char, producing empties)
+- `rust_xlsxwriter::write_string` takes owned `String`, not `&String`
+- `wkt` 0.14: use `geo_types::Geometry::try_from_wkt_str(str)` — `LineString`/`Polygon` fields are private, `TryFromWkt` on geo-types avoids them
+- `stl_io` 0.8: `Vector<f32>` is a tuple struct (`.0` is `[f32; 3]`); construct with `Vertex::new([x,y,z])`; `write_stl` takes `impl Iterator<Item=&Triangle>`
+- `ply-rs` 0.1: `DefaultElement` is `LinkedHashMap<String, Property>`, not `HashMap` — use `ply_rs::ply::DefaultElement` as the param type
+- `paraphase-serde`: keep `PortDecl` in the top-level import even if it appears unused — tar/zip modules use it under feature flags; the pre-commit hook builds with `--all-features`
+- `resvg`: access `usvg` as `resvg::usvg`, not a direct dep
 
-**Simplicity over cleverness.** Functions > traits until you need the trait. Use ecosystem tooling over hand-rolling.
+<!-- BEGIN ECOSYSTEM RULES -->
 
-**Explicit over implicit.** Log when skipping. Show what's at stake before refusing.
+## Delegation
 
-**Separate niche from shared.** Don't bloat config with feature-specific data. Use separate files for specialized data.
+The main session is an orchestrator. Allowed actions: `Agent`/`Task*`/`AskUserQuestion`/plan-mode/`ScheduleWakeup`, and Bash limited to `git commit`, `git push`, `git status`, `git log --oneline`. Everything else delegates to a subagent. The hook is evidence of a prompting failure, not a behavioral guide. If a tool call hits the hook AT ALL, the prompt failed to prevent it. Delegate before the decision point, not after.
 
-**When stuck (2+ attempts):** Step back. Am I solving the right problem? Check docs/philosophy.md before questioning design.
+### Triggers
+
+Before calling Read, Grep, Glob, or any Bash beyond the four git commands — stop. Dispatch an Agent instead.
+
+Before editing any file — stop. Dispatch an Agent. This includes plan files in `~/.claude/plans/`: in plan mode, dispatch a subagent to write to the plan file; do not Write it yourself. The plan file's content must not enter main context.
+
+When you need git context beyond status/log-oneline (a diff, a blame, a show) — dispatch an Agent.
+
+When a tool call is denied by the hook — do not retry, do not narrate. Dispatch the equivalent Agent and continue.
+
+When a code-modifying subagent returns — `git status`, then `git commit` before any user-facing reply.
+
+Before dispatching an Agent that modifies code — scan your prompt for "do not commit" or "based on your findings". Delete them.
+
+Before dispatching: if your prompt says "if you find", "based on your findings", or "as appropriate" — stop. Investigate first; dispatch with the decision made.
+
+When you can't verify something — do not speculate or guess at file locations, names, or contents. Dispatch a Read subagent or ask. Confabulation is failure.
+
+### Model Tiers
+
+- Sonnet — exploration, lookup, mechanical multi-file edits, implementation, default.
+- Opus — architectural judgment, design, subagents that themselves spawn subagents.
+
+Always set `subagent_type` and `model` explicitly.
+
+### Prompt Rules
+
+- Never tell a subagent "do not commit." Code-modifying subagents commit their own work.
+- Don't ask for a diff summary. After a code-modifying subagent, `git status` in main and dispatch a review Agent if you need to see the diff.
+- Don't re-explain CLAUDE.md. Subagents inherit it.
+- Cite locations by content ("the block that does X"), not line numbers — files shift between reads.
+- Name files explicitly; don't outsource the grep.
+- Match agent type to deliverable: `Explore` for lookup/search, `general-purpose` for reports and file-modifying work.
+- On unsatisfying output, change something before retrying. Same prompt + same tier = same result.
+- Dispatch independent subagents in parallel (multiple Agent blocks in one message).
+- Pair `isolation: worktree` with `run_in_background: true`.
+- Code-modifying subagents must verify their own changes before returning (re-read the diff, run tests, etc.). The orchestrator does not get a second pass with git diff — that's hook-blocked.
+
+## Hard Constraints
+
+- No Edit/Write/NotebookEdit in main. Plan files in `~/.claude/plans/` are written by subagents, not by main.
+- No Read/Grep/Glob/NotebookRead in main. Delegate.
+- No Bash in main beyond `git commit`, `git push`, `git status`, `git log --oneline`.
+- No `--no-verify`. Fix the issue or fix the hook.
+- No path dependencies in `Cargo.toml` — they couple repos and break independent publishing.
+- No interactive git (no `git rebase -i`, no `git add -i`, no `--no-edit` on rebase).
+- No suggesting project names. LLMs are bad at this; refine the conceptual space only.
+- No tracking cross-project issues in conversation — they go in TODO.md in the affected repo.
+- No ecosystem changes without checking all affected repos.
+- No assuming a tool is missing without checking `nix develop`.
+- Commit completed work in the same turn it finishes. Uncommitted work is lost work.
+
+## Meta
+
+- Something unexpected is a signal. Stop and find out why. Do not accept the anomaly and proceed.
+- Corrections from the user are conversation, not material for new rules. Rules are added when a failure mode is observed repeatedly.
+
+<!-- END ECOSYSTEM RULES -->

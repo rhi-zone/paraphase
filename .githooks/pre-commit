@@ -7,9 +7,12 @@ if ! command -v cargo &> /dev/null; then
     exec nix develop -c "$0" "$@"
 fi
 
+staged=$(git diff --cached --name-only)
 echo "Running cargo fmt..."
 cargo fmt --all
-git add -u
+if [ -n "$staged" ]; then
+  echo "$staged" | xargs git add
+fi
 
 echo "Running cargo clippy..."
 cargo clippy --all-targets --all-features -- -D warnings
