@@ -8,16 +8,18 @@ export default withMermaid(
         include: ['mermaid'],
       },
     },
-    title: 'Paraphase',
+    title: 'paraphase',
     description: 'Pipeline orchestrator for data conversion',
 
     base: '/paraphase/',
+
+    srcExclude: ['**/CLAUDE.md'],
 
     themeConfig: {
       nav: [
         { text: 'Philosophy', link: '/philosophy' },
         { text: 'Architecture', link: '/architecture-decisions' },
-        { text: 'Rhizome', link: 'https://docs.rhi.zone/' },
+        { text: 'rhi', link: 'https://docs.rhi.zone/' },
       ],
 
       sidebar: {
