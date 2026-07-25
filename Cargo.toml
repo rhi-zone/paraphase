@@ -33,3 +33,6 @@ thiserror = "2"
 
 # Collections
 indexmap = { version = "2", features = ["serde"] }
+
+[profile.dev]
+debug = 0
