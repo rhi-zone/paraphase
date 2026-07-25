@@ -7,8 +7,9 @@ if ! command -v cargo &> /dev/null; then
     exec nix develop -c "$0" "$@"
 fi
 
-echo "Running cargo fmt check..."
-cargo fmt --all -- --check
+echo "Running cargo fmt..."
+cargo fmt --all
+git add -u
 
 echo "Running cargo clippy..."
 cargo clippy --all-targets --all-features -- -D warnings
